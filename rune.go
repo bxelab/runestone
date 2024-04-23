@@ -11,7 +11,7 @@ import (
 )
 
 type Rune struct {
-	value uint128.Uint128
+	Value uint128.Uint128
 }
 
 func Uint128FromString(s string) uint128.Uint128 {
@@ -52,11 +52,11 @@ var STEPS = []uint128.Uint128{
 }
 
 func NewRune(value uint128.Uint128) Rune {
-	return Rune{value: value}
+	return Rune{Value: value}
 }
 
 func (r Rune) N() uint128.Uint128 {
-	return r.value
+	return r.Value
 }
 
 const SUBSIDY_HALVING_INTERVAL = 210_000
@@ -110,18 +110,18 @@ func (r Rune) MinimumAtHeight(chain wire.BitcoinNet, height uint64) Rune {
 }
 
 func (r Rune) IsReserved() bool {
-	return r.value.Cmp(RESERVED) >= 0
+	return r.Value.Cmp(RESERVED) >= 0
 }
 
 func (r Rune) Reserved(block uint64, tx uint32) Rune {
 	v := RESERVED.Add(uint128.From64(block).Lsh(32).Or(uint128.From64(uint64(tx))))
 	return Rune{
-		value: v,
+		Value: v,
 	}
 }
 
 func (r Rune) Commitment() []byte {
-	bytes := r.value.Big().Bytes()
+	bytes := r.Value.Big().Bytes()
 
 	end := len(bytes)
 	for end > 0 && bytes[end-1] == 0 {
@@ -133,11 +133,11 @@ func (r Rune) Commitment() []byte {
 
 func (r Rune) String() string {
 	x := big.NewInt(0).SetUint64(^uint64(0))
-	if r.value.Cmp(uint128.FromBig(x)) == 0 {
+	if r.Value.Cmp(uint128.FromBig(x)) == 0 {
 		return "BCGDENLQRQWDSLRUGSNLBTMFIJAV"
 	}
 
-	n := new(big.Int).Add(r.value.Big(), big.NewInt(1))
+	n := new(big.Int).Add(r.Value.Big(), big.NewInt(1))
 	var symbol strings.Builder
 	for n.Cmp(big.NewInt(0)) > 0 {
 		n.Sub(n, big.NewInt(1))
@@ -161,7 +161,7 @@ func ParseRune(s string) (Rune, error) {
 			return Rune{}, errors.New(fmt.Sprintf("invalid character `%c`", c))
 		}
 	}
-	return Rune{value: uint128.FromBig(x)}, nil
+	return Rune{Value: uint128.FromBig(x)}, nil
 }
 
 type Error struct {

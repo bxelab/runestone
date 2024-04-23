@@ -1,22 +1,24 @@
 package go_runestone
 
-import "math/big"
+import (
+	"lukechampine.com/uint128"
+)
 
 type Terms struct {
-	amount *big.Int
-	cap    *big.Int
-	height [2]*big.Int
-	offset [2]*big.Int
+	Amount *uint128.Uint128
+	Cap    *uint128.Uint128
+	Height [2]*uint64
+	Offset [2]*uint64
 }
 
 type Etching struct {
-	divisibility *uint8
-	premine      *big.Int
-	rune         *Rune
-	spacers      *uint32
-	symbol       *rune
-	terms        *Terms
-	turbo        bool
+	Divisibility *uint8
+	Premine      *uint128.Uint128
+	Rune         *Rune
+	Spacers      *uint32
+	Symbol       *rune
+	Terms        *Terms
+	Turbo        bool
 }
 
 const (
@@ -24,25 +26,25 @@ const (
 	MaxSpacers      = 0b00000111_11111111_11111111_11111111
 )
 
-func (e *Etching) Supply() *big.Int {
-	premine := big.NewInt(0)
-	if e.premine != nil {
-		premine = e.premine
+func (e *Etching) Supply() *uint128.Uint128 {
+	premine := uint128.Zero
+	if e.Premine != nil {
+		premine = *e.Premine
 	}
 
-	cap := big.NewInt(0)
-	amount := big.NewInt(0)
-	if e.terms != nil {
-		if e.terms.cap != nil {
-			cap = e.terms.cap
+	cap := uint128.Zero
+	amount := uint128.Zero
+	if e.Terms != nil {
+		if e.Terms.Cap != nil {
+			cap = *e.Terms.Cap
 		}
-		if e.terms.amount != nil {
-			amount = e.terms.amount
+		if e.Terms.Amount != nil {
+			amount = *e.Terms.Amount
 		}
 	}
 
-	supply := new(big.Int).Mul(cap, amount)
-	supply.Add(supply, premine)
+	supply := cap.Mul(amount)
+	supply = supply.Add(premine)
 
-	return supply
+	return &supply
 }

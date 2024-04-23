@@ -9,27 +9,35 @@ import (
 	"lukechampine.com/uint128"
 )
 
-type Tag int
+type Tag uint8
 
 const (
-	TagBody         = 0
-	TagFlags        = 2
-	TagRune         = 4
-	TagPremine      = 6
-	TagCap          = 8
-	TagAmount       = 10
-	TagHeightStart  = 12
-	TagHeightEnd    = 14
-	TagOffsetStart  = 16
-	TagOffsetEnd    = 18
-	TagMint         = 20
-	TagPointer      = 22
-	TagCenotaph     = 126
-	TagDivisibility = 1
-	TagSpacers      = 3
-	TagSymbol       = 5
-	TagNop          = 127
+	TagBody         Tag = 0
+	TagFlags        Tag = 2
+	TagRune         Tag = 4
+	TagPremine      Tag = 6
+	TagCap          Tag = 8
+	TagAmount       Tag = 10
+	TagHeightStart  Tag = 12
+	TagHeightEnd    Tag = 14
+	TagOffsetStart  Tag = 16
+	TagOffsetEnd    Tag = 18
+	TagMint         Tag = 20
+	TagPointer      Tag = 22
+	TagCenotaph     Tag = 126
+	TagDivisibility Tag = 1
+	TagSpacers      Tag = 3
+	TagSymbol       Tag = 5
+	TagNop          Tag = 127
 )
+
+func NewTag(u uint128.Uint128) Tag {
+	return Tag(u.Lo)
+
+}
+func (tag Tag) Byte() byte {
+	return byte(tag)
+}
 
 type HashMap map[Tag][]uint128.Uint128
 
