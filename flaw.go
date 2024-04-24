@@ -17,6 +17,11 @@ const (
 	Varint
 )
 
+func NewFlawP(f Flaw) *Flaw {
+	return &f
+
+}
+
 var flawToString = map[Flaw]string{
 	EdictOutput:         "edict output greater than transaction output count",
 	EdictRuneId:         "invalid Rune ID in edict",

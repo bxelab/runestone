@@ -25,6 +25,13 @@ type Runestone struct {
 func (r *Runestone) Decipher(transaction *wire.MsgTx) (*Artifact, error) {
 	payload, err := r.payload(transaction)
 	if err != nil {
+		if payload != nil {
+			return &Artifact{
+				Cenotaph: &Cenotaph{
+					Flaw: &payload.Invalid,
+				}}, nil
+		}
+
 		return nil, err
 	}
 
@@ -42,7 +49,11 @@ func (r *Runestone) Decipher(transaction *wire.MsgTx) (*Artifact, error) {
 	flags, err := TagTake(TagFlags, message.Fields,
 		func(uint128s []uint128.Uint128) (*uint128.Uint128, error) {
 			return &uint128s[0], nil
-		})
+		}, 1)
+	if flags == nil {
+		//unwrap_or_default
+		flags = &uint128.Zero
+	}
 	var etching *Etching
 	if FlagEtching.Take(flags) {
 		etching = &Etching{}
@@ -53,17 +64,17 @@ func (r *Runestone) Decipher(transaction *wire.MsgTx) (*Artifact, error) {
 					return nil, errors.New("divisibility too high")
 				}
 				return &divisibility, nil
-			})
+			}, 1)
 		//      premine: Tag::Premine.take(&mut fields, |[premine]| Some(premine)),
 		etching.Premine, err = TagTake(TagPremine, message.Fields,
 			func(uint128s []uint128.Uint128) (*uint128.Uint128, error) {
 				return &uint128s[0], nil
-			})
+			}, 1)
 		// rune: Tag::Rune.take(&mut fields, |[rune]| Some(Rune(rune))),
 		etching.Rune, err = TagTake(TagRune, message.Fields,
 			func(uint128s []uint128.Uint128) (*Rune, error) {
 				return &Rune{Value: uint128s[0]}, nil
-			})
+			}, 1)
 		//      spacers: Tag::Spacers.take(&mut fields, |[spacers]| {
 		//        let spacers = u32::try_from(spacers).ok()?;
 		//        (spacers <= Etching::MAX_SPACERS).then_some(spacers)
@@ -75,7 +86,7 @@ func (r *Runestone) Decipher(transaction *wire.MsgTx) (*Artifact, error) {
 					return nil, errors.New("spacers too high")
 				}
 				return &spacers, nil
-			})
+			}, 1)
 		//      symbol: Tag::Symbol.take(&mut fields, |[symbol]| {
 		//        char::from_u32(u32::try_from(symbol).ok()?)
 		//      }),
@@ -83,7 +94,7 @@ func (r *Runestone) Decipher(transaction *wire.MsgTx) (*Artifact, error) {
 			func(uint128s []uint128.Uint128) (*rune, error) {
 				symbol := rune(uint32(uint128s[0].Lo))
 				return &symbol, nil
-			})
+			}, 1)
 		//      terms: Flag::Terms.take(&mut flags).then(|| Terms {
 		//        cap: Tag::Cap.take(&mut fields, |[cap]| Some(cap)),
 		//        height: (
@@ -107,31 +118,31 @@ func (r *Runestone) Decipher(transaction *wire.MsgTx) (*Artifact, error) {
 			terms.Cap, err = TagTake(TagCap, message.Fields,
 				func(uint128s []uint128.Uint128) (*uint128.Uint128, error) {
 					return &uint128s[0], nil
-				})
+				}, 1)
 			terms.Height[0], err = TagTake(TagHeightStart, message.Fields,
 				func(uint128s []uint128.Uint128) (*uint64, error) {
 					h := uint128s[0].Lo
 					return &h, nil
-				})
+				}, 1)
 			terms.Height[1], err = TagTake(TagHeightEnd, message.Fields,
 				func(uint128s []uint128.Uint128) (*uint64, error) {
 					h := uint128s[0].Lo
 					return &h, nil
-				})
+				}, 1)
 			terms.Amount, err = TagTake(TagAmount, message.Fields,
 				func(uint128s []uint128.Uint128) (*uint128.Uint128, error) {
 					return &uint128s[0], nil
-				})
+				}, 1)
 			terms.Offset[0], err = TagTake(TagOffsetStart, message.Fields,
 				func(uint128s []uint128.Uint128) (*uint64, error) {
 					h := uint128s[0].Lo
 					return &h, nil
-				})
+				}, 1)
 			terms.Offset[1], err = TagTake(TagOffsetEnd, message.Fields,
 				func(uint128s []uint128.Uint128) (*uint64, error) {
 					h := uint128s[0].Lo
 					return &h, nil
-				})
+				}, 1)
 			etching.Terms = &terms
 		}
 		//      turbo: Flag::Turbo.take(&mut flags),
@@ -146,7 +157,7 @@ func (r *Runestone) Decipher(transaction *wire.MsgTx) (*Artifact, error) {
 			tx := uint32(uint128s[1].Lo)
 			return &RuneId{block, tx}, nil
 
-		})
+		}, 2)
 	//let pointer = Tag::Pointer.take(&mut fields, |[pointer]| {
 	//      let pointer = u32::try_from(pointer).ok()?;
 	//      (u64::from(pointer) < u64::try_from(transaction.output.len()).unwrap()).then_some(pointer)
@@ -159,22 +170,22 @@ func (r *Runestone) Decipher(transaction *wire.MsgTx) (*Artifact, error) {
 			}
 			return nil, errors.New("pointer too high")
 
-		})
+		}, 1)
 	//if etching
 	//      .map(|etching| etching.supply().is_none())
 	//      .unwrap_or_default()
 	//    {
 	//      flaw.get_or_insert(Flaw::SupplyOverflow);
 	//    }
-	if etching != nil && etching.Supply().IsZero() {
-		*message.Flaw = SupplyOverflow
+	if etching != nil && etching.Supply() == nil {
+		message.Flaw = NewFlawP(SupplyOverflow)
 
 	}
 	// if flags != 0 {
 	//      flaw.get_or_insert(Flaw::UnrecognizedFlag);
 	//    }
 	if !flags.IsZero() {
-		*message.Flaw = UnrecognizedFlag
+		message.Flaw = NewFlawP(UnrecognizedFlag)
 
 	}
 	//    if fields.keys().any(|tag| tag % 2 == 0) {
@@ -182,7 +193,7 @@ func (r *Runestone) Decipher(transaction *wire.MsgTx) (*Artifact, error) {
 	//    }
 	for tag := range message.Fields {
 		if tag%2 == 0 {
-			*message.Flaw = UnrecognizedEvenTag
+			message.Flaw = NewFlawP(UnrecognizedEvenTag)
 		}
 
 	}
@@ -194,13 +205,16 @@ func (r *Runestone) Decipher(transaction *wire.MsgTx) (*Artifact, error) {
 	//      }));
 	//    }
 	if message.Flaw != nil {
-		return &Artifact{
+		a := &Artifact{
 			Cenotaph: &Cenotaph{
-				Flaw:    message.Flaw,
-				Mint:    mint,
-				Etching: etching.Rune,
+				Flaw: message.Flaw,
+				Mint: mint,
 			},
-		}, nil
+		}
+		if etching != nil {
+			a.Cenotaph.Etching = etching.Rune
+		}
+		return a, nil
 
 	}
 
@@ -332,34 +346,35 @@ type Payload struct {
 
 func (r *Runestone) payload(transaction *wire.MsgTx) (*Payload, error) {
 	for _, output := range transaction.TxOut {
-		script, err := txscript.ParsePkScript(output.PkScript)
-		scriptClass := script.Class()
-		if err != nil || scriptClass != txscript.NullDataTy {
-			continue
+		tokenizer := txscript.MakeScriptTokenizer(0, output.PkScript)
+		if tokenizer.Next() && tokenizer.Err() != nil {
+			// Check for OP_RETURN
+			if tokenizer.Opcode() != txscript.OP_RETURN {
+				continue
+			}
 		}
-		instructions := output.PkScript
-		// Check for OP_RETURN
-		if len(instructions) < 1 || instructions[0] != txscript.OP_RETURN {
-			continue
-		}
-
-		// Check for protocol identifier (Runestone::MAGIC_NUMBER)
-		if len(instructions) < 2 || instructions[1] != MAGIC_NUMBER {
-			continue
+		if tokenizer.Next() && tokenizer.Err() != nil {
+			// Check for protocol identifier (Runestone::MAGIC_NUMBER)
+			if tokenizer.Opcode() != MAGIC_NUMBER {
+				continue
+			}
 		}
 
 		// Construct the payload by concatenating remaining data pushes
 		var payload []byte
-		if instructions[2] > txscript.OP_16 {
-			return &Payload{Invalid: InvalidScript}, InvalidScript.Error()
+		for tokenizer.Next() {
+			if tokenizer.Err() != nil {
+				return &Payload{Invalid: InvalidScript}, InvalidScript.Error()
+			}
+			//is PushBytes
+			if tokenizer.Opcode() >= txscript.OP_DATA_1 && tokenizer.Opcode() <= txscript.OP_PUSHDATA4 {
+				payload = append(payload, tokenizer.Data()...)
+				continue
+			} else {
+				return &Payload{Invalid: Opcode}, Opcode.Error()
+			}
+
 		}
-		payload = append(payload, instructions[3:]...)
-		//for _, instruction := range instructions[2:] {
-		//	if instruction > txscript.OP_16 {
-		//		return &Payload{Invalid: "Invalid opcode"}
-		//	}
-		//	payload = append(payload, instruction.Data...)
-		//}
 
 		return &Payload{Valid: payload}, nil
 	}

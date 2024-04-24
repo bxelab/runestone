@@ -23,20 +23,20 @@ func MessageFromIntegers(tx *wire.MsgTx, payload []uint128.Uint128) (*Message, e
 			id := RuneId{}
 			for j := i + 1; j < len(payload); j += 4 {
 				if j+3 >= len(payload) {
-					*flaw = NewFlaw("TrailingIntegers")
+					flaw = NewFlawP(TrailingIntegers)
 					break
 				}
 
 				chunk := payload[j : j+4]
 				next, err := id.Next(chunk[0], chunk[1])
 				if err != nil {
-					*flaw = NewFlaw("EdictRuneId")
+					flaw = NewFlawP(EdictRuneId)
 					break
 				}
 
 				edict, err := EdictFromIntegers(tx, *next, chunk[2], chunk[3])
 				if err != nil {
-					*flaw = NewFlaw("EdictOutput")
+					flaw = NewFlawP(EdictOutput)
 					break
 				}
 

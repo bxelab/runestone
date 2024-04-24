@@ -40,9 +40,18 @@ func (r RuneId) Delta(next RuneId) (uint64, uint32, error) {
 
 func (r RuneId) Next(block uint128.Uint128, tx uint128.Uint128) (*RuneId, error) {
 	newBlock := r.Block + block.Lo
+	//check for overflow
+	if newBlock < r.Block {
+		return nil, fmt.Errorf("block overflow")
+
+	}
 	var newTx uint32
 	if block.IsZero() {
 		newTx = r.Tx + uint32(tx.Lo)
+		//check for overflow
+		if newTx < r.Tx {
+			return nil, fmt.Errorf("tx overflow")
+		}
 	} else {
 		newTx = uint32(tx.Lo)
 	}

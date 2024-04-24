@@ -39,6 +39,7 @@ func (tag Tag) Byte() byte {
 func (tag Tag) String() string {
 	return fmt.Sprintf("Tag(%d)", tag)
 }
+
 func TagTake[T any](t Tag, fields map[Tag][]uint128.Uint128, with func([]uint128.Uint128) (*T, error), n ...int) (*T, error) {
 	field, ok := fields[t]
 	if !ok {
