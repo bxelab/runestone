@@ -22,14 +22,10 @@ type Runestone struct {
 	Pointer *uint32
 }
 
-func (r *Runestone) Decipher(transaction *wire.MsgTx) *Artifact {
+func (r *Runestone) Decipher(transaction *wire.MsgTx) (*Artifact, error) {
 	payload, err := r.payload(transaction)
-	if err == nil {
-		return &Artifact{
-			Cenotaph: &Cenotaph{
-				Flaw: &payload.Invalid,
-			},
-		}
+	if err != nil {
+		return nil, err
 	}
 
 	integers, err := r.integers(payload.Valid)
@@ -39,7 +35,7 @@ func (r *Runestone) Decipher(transaction *wire.MsgTx) *Artifact {
 			Cenotaph: &Cenotaph{
 				Flaw: &flaw,
 			},
-		}
+		}, err
 	}
 
 	message, err := MessageFromIntegers(transaction, integers)
@@ -204,7 +200,7 @@ func (r *Runestone) Decipher(transaction *wire.MsgTx) *Artifact {
 				Mint:    mint,
 				Etching: etching.Rune,
 			},
-		}
+		}, nil
 
 	}
 
@@ -215,7 +211,7 @@ func (r *Runestone) Decipher(transaction *wire.MsgTx) *Artifact {
 			Mint:    mint,
 			Pointer: pointer,
 		},
-	}
+	}, nil
 }
 
 func (r *Runestone) Encipher() ([]byte, error) {

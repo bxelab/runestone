@@ -1,6 +1,7 @@
 package go_runestone
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -52,18 +53,24 @@ func (r RuneId) String() string {
 	return fmt.Sprintf("%d:%d", r.Block, r.Tx)
 }
 
-func ParseRuneId(s string) (*RuneId, error) {
+func RuneIdFromString(s string) (*RuneId, error) {
 	parts := strings.Split(s, ":")
 	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid format")
+		return nil, ErrSeparator
 	}
 	block, err := strconv.ParseUint(parts[0], 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("invalid block: %v", err)
+		return nil, ErrBlock(parts[0])
 	}
 	tx, err := strconv.ParseUint(parts[1], 10, 32)
 	if err != nil {
-		return nil, fmt.Errorf("invalid tx: %v", err)
+		return nil, ErrTransaction(parts[1])
 	}
 	return NewRuneId(block, uint32(tx)), nil
 }
+
+var (
+	ErrSeparator   = errors.New("missing separator")
+	ErrBlock       = func(err string) error { return fmt.Errorf("invalid Block height:%s", err) }
+	ErrTransaction = func(err string) error { return fmt.Errorf("invalid Transaction index:%s", err) }
+)
