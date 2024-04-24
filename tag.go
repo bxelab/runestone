@@ -1,8 +1,6 @@
 package go_runestone
 
 import (
-	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 
@@ -38,50 +36,47 @@ func NewTag(u uint128.Uint128) Tag {
 func (tag Tag) Byte() byte {
 	return byte(tag)
 }
-
-type HashMap map[Tag][]uint128.Uint128
-
-func TagTake[T any](t Tag, fields map[Tag][]uint128.Uint128, with func([]uint128.Uint128) (*T, error)) (*T, error) {
+func (tag Tag) String() string {
+	return fmt.Sprintf("Tag(%d)", tag)
+}
+func TagTake[T any](t Tag, fields map[Tag][]uint128.Uint128, with func([]uint128.Uint128) (*T, error), n ...int) (*T, error) {
 	field, ok := fields[t]
 	if !ok {
-		return nil, errors.New("field not found")
+		return nil, errors.New("tag not found in fields")
+	}
+	N := len(field)
+	if N == 0 {
+		return nil, errors.New("no values for tag in fields")
+	}
+	if len(n) > 0 {
+		N = n[0]
 	}
 
-	if len(field) == 0 {
-		return nil, errors.New("field is empty")
-	}
+	values := make([]uint128.Uint128, N)
+	copy(values, field)
 
-	value, err := with(field)
+	value, err := with(values)
 	if err != nil {
 		return nil, err
 	}
 
-	delete(fields, t)
+	if len(field) >= N {
+		field = field[N:]
+	} else {
+		field = []uint128.Uint128{}
+	}
+	if len(field) == 0 {
+		delete(fields, t)
+	} else {
+		fields[t] = field
+	}
 
 	return value, nil
 }
 
 func (t Tag) Encode(values []uint128.Uint128, payload *[]byte) {
 	for _, value := range values {
-		t.encodeToSlice(payload)
-		encodeToSlice(value, payload)
+		*payload = append(*payload, t.Byte())
+		*payload = append(*payload, EncodeUint128(value)...)
 	}
-}
-
-func (t Tag) encodeToSlice(payload *[]byte) {
-	buf := new(bytes.Buffer)
-	err := binary.Write(buf, binary.LittleEndian, t)
-	if err != nil {
-		fmt.Println("binary.Write failed:", err)
-	}
-	*payload = append(*payload, buf.Bytes()...)
-}
-
-func encodeToSlice(value uint128.Uint128, payload *[]byte) {
-	buf := new(bytes.Buffer)
-	err := binary.Write(buf, binary.LittleEndian, value)
-	if err != nil {
-		fmt.Println("binary.Write failed:", err)
-	}
-	*payload = append(*payload, buf.Bytes()...)
 }

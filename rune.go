@@ -59,52 +59,41 @@ func (r Rune) N() uint128.Uint128 {
 	return r.Value
 }
 
-const SUBSIDY_HALVING_INTERVAL = 210_000
+const SUBSIDY_HALVING_INTERVAL uint32 = 210_000
 
-func (r Rune) FirstRuneHeight(network wire.BitcoinNet) uint32 {
+func FirstRuneHeight(network wire.BitcoinNet) uint32 {
 	var multiplier uint32
 	switch network {
 	case wire.MainNet:
 		multiplier = 4
-	case wire.TestNet3, wire.SimNet:
+	case wire.TestNet, wire.SimNet:
 		multiplier = 0
-	case wire.TestNet:
+	case wire.TestNet3:
 		multiplier = 12
 	default:
 		multiplier = 0
 	}
 	return SUBSIDY_HALVING_INTERVAL * multiplier
 }
-func (r Rune) MinimumAtHeight(chain wire.BitcoinNet, height uint64) Rune {
+func MinimumAtHeight(chain wire.BitcoinNet, height uint64) Rune {
 	offset := height + 1
-
 	const interval uint32 = SUBSIDY_HALVING_INTERVAL / 12
-
-	start := r.FirstRuneHeight(chain)
-
+	start := FirstRuneHeight(chain)
 	end := start + SUBSIDY_HALVING_INTERVAL
-
 	if offset < uint64(start) {
 		return Rune{STEPS[12]}
 	}
-
 	if offset >= uint64(end) {
 		return Rune{}
 	}
-
 	progress := offset - uint64(start)
-
 	length := 12 - progress/uint64(interval)
-
 	endStep := STEPS[length-1]
-
 	startStep := STEPS[length]
-
 	remainder := progress % uint64(interval)
 
 	//val := startStep - ((startStep - endStep) * remainder / uint64(interval))
-	val := startStep.Sub(endStep).Mul(uint128.From64(remainder)).Div(uint128.From64(uint64(interval)))
-
+	val := startStep.Sub(startStep.Sub(endStep).Mul(uint128.From64(remainder)).Div(uint128.From64(uint64(interval))))
 	return Rune{val}
 
 }
@@ -113,7 +102,7 @@ func (r Rune) IsReserved() bool {
 	return r.Value.Cmp(RESERVED) >= 0
 }
 
-func (r Rune) Reserved(block uint64, tx uint32) Rune {
+func Reserved(block uint64, tx uint32) Rune {
 	v := RESERVED.Add(uint128.From64(block).Lsh(32).Or(uint128.From64(uint64(tx))))
 	return Rune{
 		Value: v,
@@ -123,6 +112,11 @@ func (r Rune) Reserved(block uint64, tx uint32) Rune {
 func (r Rune) Commitment() []byte {
 	bytes := r.Value.Big().Bytes()
 
+	// Reverse bytes to get little-endian representation
+	for i, j := 0, len(bytes)-1; i < j; i, j = i+1, j-1 {
+		bytes[i], bytes[j] = bytes[j], bytes[i]
+	}
+
 	end := len(bytes)
 	for end > 0 && bytes[end-1] == 0 {
 		end--
@@ -130,38 +124,53 @@ func (r Rune) Commitment() []byte {
 
 	return bytes[:end]
 }
-
 func (r Rune) String() string {
-	x := big.NewInt(0).SetUint64(^uint64(0))
-	if r.Value.Cmp(uint128.FromBig(x)) == 0 {
+	n := r.Value
+	if n.Cmp(uint128.Max) == 0 {
 		return "BCGDENLQRQWDSLRUGSNLBTMFIJAV"
 	}
 
-	n := new(big.Int).Add(r.Value.Big(), big.NewInt(1))
+	n = n.Add64(1)
 	var symbol strings.Builder
-	for n.Cmp(big.NewInt(0)) > 0 {
-		n.Sub(n, big.NewInt(1))
-		symbol.WriteByte("ABCDEFGHIJKLMNOPQRSTUVWXYZ"[n.Mod(n, big.NewInt(26)).Int64()])
-		n.Div(n, big.NewInt(26))
+	for n.Cmp(uint128.Zero) > 0 {
+		index := n.Sub64(1).Mod64(26)
+
+		symbol.WriteByte("ABCDEFGHIJKLMNOPQRSTUVWXYZ"[index])
+		n = n.Sub64(1).Div64(26)
 	}
 
-	return symbol.String()
+	// Reverse the string
+	runes := []rune(symbol.String())
+	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+		runes[i], runes[j] = runes[j], runes[i]
+	}
+
+	return string(runes)
 }
 
-func ParseRune(s string) (Rune, error) {
+func RuneFromString(s string) (Rune, error) {
 	x := big.NewInt(0)
+	tmp := big.NewInt(0)
 	for i, c := range s {
 		if i > 0 {
-			x.Add(x, big.NewInt(1))
+			x.Add(x, tmp.SetInt64(1))
 		}
-		x.Mul(x, big.NewInt(26))
+		x.Mul(x, tmp.SetInt64(26))
+		if x.BitLen() > 128 {
+			return Rune{}, errors.New("overflow")
+		}
 		if c >= 'A' && c <= 'Z' {
-			x.Add(x, big.NewInt(int64(c-'A')))
+			x.Add(x, tmp.SetInt64(int64(c-'A')))
+			if x.BitLen() > 128 {
+				return Rune{}, errors.New("overflow")
+			}
 		} else {
-			return Rune{}, errors.New(fmt.Sprintf("invalid character `%c`", c))
+			return Rune{}, fmt.Errorf("invalid character `%c`", c)
 		}
 	}
-	return Rune{Value: uint128.FromBig(x)}, nil
+	u := uint128.FromBig(x)
+
+	return Rune{Value: u}, nil
 }
 
 type Error struct {

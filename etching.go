@@ -27,6 +27,12 @@ const (
 )
 
 func (e *Etching) Supply() *uint128.Uint128 {
+	//cover panic
+	defer func() {
+		if r := recover(); r != nil {
+			return
+		}
+	}()
 	premine := uint128.Zero
 	if e.Premine != nil {
 		premine = *e.Premine

@@ -18,8 +18,8 @@ func (f Flag) Mask() uint128.Uint128 {
 func (f Flag) Take(flags *uint128.Uint128) bool {
 	mask := f.Mask()
 	set := flags.And(mask).Cmp(uint128.Zero) != 0
-	*flags = flags.Add(mask)
-	//TODO: *flags &= !Mask;
+	*flags = flags.Xor(flags.And(mask))
+	// *flags &= !Mask;
 	return set
 }
 

@@ -3,7 +3,6 @@ package go_runestone
 import (
 	"encoding/binary"
 	"errors"
-	"math/big"
 	"sort"
 
 	"github.com/btcsuite/btcd/txscript"
@@ -386,47 +385,6 @@ func (r *Runestone) integers(payload []byte) ([]uint128.Uint128, error) {
 	}
 
 	return integers, nil
-}
-func Encode(n *big.Int) []byte {
-	var result []byte
-	for n.Cmp(big.NewInt(128)) > 0 {
-		temp := new(big.Int).Set(n)
-		last := temp.And(n, new(big.Int).SetUint64(0b0111_1111))
-		result = append(result, last.Or(last, new(big.Int).SetUint64(0b1000_0000)).Bytes()...)
-		n.Rsh(n, 7)
-	}
-	result = append(result, n.Bytes()...)
-	return result
-}
-func EncodeUint64(n uint64) []byte {
-	var result []byte
-	for n >= 128 {
-		result = append(result, byte(n&0x7F|0x80))
-		n >>= 7
-	}
-	result = append(result, byte(n))
-	return result
-}
-func EncodeUint32(n uint32) []byte {
-	var result []byte
-	for n >= 128 {
-		result = append(result, byte(n&0x7F|0x80))
-		n >>= 7
-	}
-	result = append(result, byte(n))
-	return result
-}
-func EncodeUint8(n uint8) []byte {
-	var result []byte
-	for n >= 128 {
-		result = append(result, byte(n&0x7F|0x80))
-		n >>= 7
-	}
-	result = append(result, byte(n))
-	return result
-}
-func EncodeUint128(n uint128.Uint128) []byte {
-	return Encode(n.Big())
 }
 
 func runeToBytes(r *rune) []byte {

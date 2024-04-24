@@ -8,8 +8,9 @@ import (
 )
 
 func Test_integers(t *testing.T) {
+	r := &Runestone{}
 	payload, _ := hex.DecodeString("14f1a39f0114b2071601")
-	integers, err := integers(payload)
+	integers, err := r.integers(payload)
 	assert.NoError(t, err)
 	t.Logf("integers: %v", integers)
 }
