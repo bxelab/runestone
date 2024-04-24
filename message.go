@@ -1,8 +1,6 @@
 package go_runestone
 
 import (
-	"errors"
-
 	"github.com/btcsuite/btcd/wire"
 	"lukechampine.com/uint128"
 )
@@ -10,54 +8,51 @@ import (
 type Message struct {
 	Flaw   *Flaw
 	Edicts []Edict
-	Fields map[uint128.Uint128][]uint128.Uint128
+	Fields map[Tag][]uint128.Uint128
 }
 
 func MessageFromIntegers(tx *wire.MsgTx, payload []uint128.Uint128) (*Message, error) {
-	edicts := []Edict{}
-	fields := make(map[uint128.Uint128][]uint128.Uint128)
+	var edicts []Edict
+	fields := make(map[Tag][]uint128.Uint128)
 	var flaw *Flaw
 
 	for i := 0; i < len(payload); i += 2 {
 		tag := Tag(payload[i].Lo)
 
-		if tag == TagBody {
-			id := RuneId{} // Initialize with default values
-			for _, chunk := range payload[i+1:] {
-				if len(chunk) != 4 {
-					flaw = &Flaw{} // Initialize with appropriate flaw
+		if TagBody == tag {
+			id := RuneId{}
+			for j := i + 1; j < len(payload); j += 4 {
+				if j+3 >= len(payload) {
+					*flaw = NewFlaw("TrailingIntegers")
 					break
 				}
 
+				chunk := payload[j : j+4]
 				next, err := id.Next(chunk[0], chunk[1])
 				if err != nil {
-					flaw = &Flaw{} // Initialize with appropriate flaw
+					*flaw = NewFlaw("EdictRuneId")
 					break
 				}
 
-				edict, err := EdictFromIntegers(tx, next, chunk[2], chunk[3])
+				edict, err := EdictFromIntegers(tx, *next, chunk[2], chunk[3])
 				if err != nil {
-					flaw = &Flaw{} // Initialize with appropriate flaw
+					*flaw = NewFlaw("EdictOutput")
 					break
 				}
 
-				id = next
-				edicts = append(edicts, edict)
+				id = *next
+				edicts = append(edicts, *edict)
 			}
 			break
 		}
 
-		if i+1 >= len(payload) {
-			flaw = &Flaw{} // Initialize with appropriate flaw
+		if i+1 < len(payload) {
+			value := payload[i+1]
+			fields[tag] = append(fields[tag], value)
+		} else {
+			*flaw = NewFlaw("TruncatedField")
 			break
 		}
-
-		value := payload[i+1]
-		fields[tag] = append(fields[tag], value)
-	}
-
-	if flaw != nil {
-		return nil, errors.New("error parsing payload")
 	}
 
 	return &Message{
@@ -66,3 +61,23 @@ func MessageFromIntegers(tx *wire.MsgTx, payload []uint128.Uint128) (*Message, e
 		Fields: fields,
 	}, nil
 }
+
+func (m *Message) takeFlags() uint128.Uint128 {
+	u, _ := TagTake[uint128.Uint128](TagFlags, m.Fields, func(flags []uint128.Uint128) (*uint128.Uint128, error) {
+		return &flags[0], nil
+	})
+	return *u
+}
+
+//func (m *Message) takeEtching(flags uint128.Uint128) *Etching {
+//	key := uint128.From64(uint64(FlagEtching))
+//	etchings, ok := m.Fields[key]
+//	if ok {
+//		delete(m.Fields, key)
+//		return &Etching{
+//			Flags:    flags,
+//			Etchings: etchings,
+//		}
+//	}
+//	return nil
+//}

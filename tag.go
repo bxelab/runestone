@@ -41,26 +41,22 @@ func (tag Tag) Byte() byte {
 
 type HashMap map[Tag][]uint128.Uint128
 
-func (t Tag) Take(fields *HashMap, with func([]uint128.Uint128) (uint128.Uint128, error)) (uint128.Uint128, error) {
-	field, ok := (*fields)[t]
+func TagTake[T any](t Tag, fields map[Tag][]uint128.Uint128, with func([]uint128.Uint128) (*T, error)) (*T, error) {
+	field, ok := fields[t]
 	if !ok {
-		return uint128.Zero, errors.New("field not found")
+		return nil, errors.New("field not found")
 	}
 
 	if len(field) == 0 {
-		return uint128.Zero, errors.New("field is empty")
+		return nil, errors.New("field is empty")
 	}
 
 	value, err := with(field)
 	if err != nil {
-		return uint128.Zero, err
+		return nil, err
 	}
 
-	(*fields)[t] = (*fields)[t][1:]
-
-	if len((*fields)[t]) == 0 {
-		delete(*fields, t)
-	}
+	delete(fields, t)
 
 	return value, nil
 }

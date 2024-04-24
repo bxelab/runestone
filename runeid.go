@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"lukechampine.com/uint128"
 )
 
 type RuneId struct {
@@ -35,15 +37,15 @@ func (r RuneId) Delta(next RuneId) (uint64, uint32, error) {
 	return block, tx, nil
 }
 
-func (r RuneId) Next(block uint64, tx uint32) *RuneId {
-	newBlock := r.Block + block
+func (r RuneId) Next(block uint128.Uint128, tx uint128.Uint128) (*RuneId, error) {
+	newBlock := r.Block + block.Lo
 	var newTx uint32
-	if block == 0 {
-		newTx = r.Tx + tx
+	if block.IsZero() {
+		newTx = r.Tx + uint32(tx.Lo)
 	} else {
-		newTx = tx
+		newTx = uint32(tx.Lo)
 	}
-	return NewRuneId(newBlock, newTx)
+	return NewRuneId(newBlock, newTx), nil
 }
 
 func (r RuneId) String() string {
