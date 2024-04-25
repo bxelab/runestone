@@ -16,3 +16,6 @@ require (
 	golang.org/x/sys v0.0.0-20200814200057-3d37ad5750ed // indirect
 	lukechampine.com/uint128 v1.3.0 // indirect
 )
+replace (
+	github.com/bxelab/runestone => ../../
+)
