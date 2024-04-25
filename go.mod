@@ -1,4 +1,4 @@
-module github.com/studyzy/go-runestone
+module github.com/bxelab/runestone
 
 go 1.22
 
