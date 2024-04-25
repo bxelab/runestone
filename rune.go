@@ -148,7 +148,7 @@ func (r Rune) String() string {
 	return string(runes)
 }
 
-func RuneFromString(s string) (Rune, error) {
+func RuneFromString(s string) (*Rune, error) {
 	x := big.NewInt(0)
 	tmp := big.NewInt(0)
 	for i, c := range s {
@@ -157,20 +157,20 @@ func RuneFromString(s string) (Rune, error) {
 		}
 		x.Mul(x, tmp.SetInt64(26))
 		if x.BitLen() > 128 {
-			return Rune{}, errors.New("overflow")
+			return nil, errors.New("overflow")
 		}
 		if c >= 'A' && c <= 'Z' {
 			x.Add(x, tmp.SetInt64(int64(c-'A')))
 			if x.BitLen() > 128 {
-				return Rune{}, errors.New("overflow")
+				return nil, errors.New("overflow")
 			}
 		} else {
-			return Rune{}, fmt.Errorf("invalid character `%c`", c)
+			return nil, fmt.Errorf("invalid character `%c`", c)
 		}
 	}
 	u := uint128.FromBig(x)
 
-	return Rune{Value: u}, nil
+	return &Rune{Value: u}, nil
 }
 
 type Error struct {

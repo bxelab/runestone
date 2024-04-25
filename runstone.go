@@ -178,14 +178,14 @@ func (r *Runestone) Decipher(transaction *wire.MsgTx) (*Artifact, error) {
 	//      flaw.get_or_insert(Flaw::SupplyOverflow);
 	//    }
 	if etching != nil && etching.Supply() == nil {
-		message.Flaw = NewFlawP(SupplyOverflow)
+		message.Flaw = FlawP(SupplyOverflow)
 
 	}
 	// if flags != 0 {
 	//      flaw.get_or_insert(Flaw::UnrecognizedFlag);
 	//    }
 	if !flags.IsZero() {
-		message.Flaw = NewFlawP(UnrecognizedFlag)
+		message.Flaw = FlawP(UnrecognizedFlag)
 
 	}
 	//    if fields.keys().any(|tag| tag % 2 == 0) {
@@ -193,7 +193,7 @@ func (r *Runestone) Decipher(transaction *wire.MsgTx) (*Artifact, error) {
 	//    }
 	for tag := range message.Fields {
 		if tag%2 == 0 {
-			message.Flaw = NewFlawP(UnrecognizedEvenTag)
+			message.Flaw = FlawP(UnrecognizedEvenTag)
 		}
 
 	}

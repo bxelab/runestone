@@ -83,3 +83,7 @@ var (
 	ErrBlock       = func(err string) error { return fmt.Errorf("invalid Block height:%s", err) }
 	ErrTransaction = func(err string) error { return fmt.Errorf("invalid Transaction index:%s", err) }
 )
+
+func (r RuneId) Cmp(other RuneId) int {
+	return uint128.New(uint64(r.Tx), r.Block).Cmp(uint128.New(uint64(other.Tx), other.Block))
+}

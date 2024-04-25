@@ -65,7 +65,7 @@ func SpacedRuneFromString(s string) (*SpacedRune, error) {
 	}
 
 	return &SpacedRune{
-		Rune:    r,
+		Rune:    *r,
 		Spacers: spacers,
 	}, nil
 }

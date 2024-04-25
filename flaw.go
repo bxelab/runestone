@@ -17,9 +17,8 @@ const (
 	Varint
 )
 
-func NewFlawP(f Flaw) *Flaw {
+func FlawP(f Flaw) *Flaw {
 	return &f
-
 }
 
 var flawToString = map[Flaw]string{

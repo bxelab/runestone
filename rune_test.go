@@ -21,7 +21,7 @@ func TestRoundTrip(t *testing.T) {
 		if err != nil {
 			t.Errorf("RuneFromString(%v) returned error: %v", s, err)
 		}
-		if parsedRune != r {
+		if *parsedRune != r {
 			t.Errorf("RuneFromString(%v) = %v, want %v", s, parsedRune, r)
 		}
 	}

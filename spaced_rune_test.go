@@ -38,7 +38,7 @@ func TestFromString(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		expected := NewSpacedRune(r, spacers)
+		expected := NewSpacedRune(*r, spacers)
 		if *sr != *expected {
 			t.Fatalf("expected: %v, got: %v", expected, sr)
 		}

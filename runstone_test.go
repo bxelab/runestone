@@ -3,13 +3,57 @@ package go_runestone
 import (
 	"encoding/hex"
 	"encoding/json"
+	"math"
+	"sort"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/stretchr/testify/assert"
 	"lukechampine.com/uint128"
 )
+
+func Uint8P(i uint8) *uint8 {
+	return &i
+}
+func Uint32P(i uint32) *uint32 {
+	return &i
+}
+func Uint64P(i uint64) *uint64 {
+	return &i
+}
+func Uint128P(i uint128.Uint128) *uint128.Uint128 {
+	return &i
+}
+func Uint128PFrom64(i uint64) *uint128.Uint128 {
+	u := uint128.From64(i)
+	return &u
+}
+func CharP(c rune) *rune {
+	return &c
+}
+
+func RuneP64(i uint64) *Rune {
+	return &Rune{uint128.From64(i)}
+}
+func assertArtifactSame(t *testing.T, expected, actual *Artifact) {
+	expect, err := json.Marshal(expected)
+	assert.NoError(t, err)
+	act, err := json.Marshal(actual)
+	assert.NoError(t, err)
+	assert.Equal(t, string(expect), string(act))
+}
+
+func i128(i int) uint128.Uint128 {
+	return uint128.From64(uint64(i))
+}
+func itag(i Tag) uint128.Uint128 {
+	return uint128.From64(uint64(i))
+}
+func iflag(i Flag) uint128.Uint128 {
+	return uint128.From64(uint64(i))
+}
 
 func Test_integers(t *testing.T) {
 	r := &Runestone{}
@@ -20,6 +64,9 @@ func Test_integers(t *testing.T) {
 }
 func runeId(tx uint32) RuneId {
 	return RuneId{Block: 1, Tx: tx}
+}
+func runeIdP(tx uint32) *RuneId {
+	return &RuneId{Block: 1, Tx: tx}
 }
 
 func decipher(integers []uint128.Uint128) (*Artifact, error) {
@@ -238,23 +285,7 @@ func TestDecipherEtching(t *testing.T) {
 	}
 	assertArtifactSame(t, expected, actual)
 }
-func assertArtifactSame(t *testing.T, expected, actual *Artifact) {
-	expect, err := json.Marshal(expected)
-	assert.NoError(t, err)
-	act, err := json.Marshal(actual)
-	assert.NoError(t, err)
-	assert.Equal(t, string(expect), string(act))
-}
 
-func i128(i int) uint128.Uint128 {
-	return uint128.From64(uint64(i))
-}
-func itag(i Tag) uint128.Uint128 {
-	return uint128.From64(uint64(i))
-}
-func iflag(i Flag) uint128.Uint128 {
-	return uint128.From64(uint64(i))
-}
 func TestDecipherEtchingWithRune(t *testing.T) {
 	actual, err := decipher([]uint128.Uint128{
 		itag(TagFlags),
@@ -296,7 +327,7 @@ func TestTermsFlagWithoutEtchingFlagProducesCenotaph(t *testing.T) {
 	assert.NoError(t, err)
 	expected := &Artifact{
 		Cenotaph: &Cenotaph{
-			Flaw: NewFlawP(UnrecognizedFlag),
+			Flaw: FlawP(UnrecognizedFlag),
 		},
 	}
 	assertArtifactSame(t, expected, actual)
@@ -308,7 +339,7 @@ func TestRecognizedFieldsWithoutFlagProducesCenotaph(t *testing.T) {
 		assert.NoError(t, err)
 		expected := Artifact{
 			Cenotaph: &Cenotaph{
-				Flaw: NewFlawP(UnrecognizedEvenTag),
+				Flaw: FlawP(UnrecognizedEvenTag),
 			},
 		}
 		assertArtifactSame(t, &expected, result)
@@ -414,7 +445,7 @@ func TestInvalidVarintProducesCenotaph(t *testing.T) {
 
 	expected := &Artifact{
 		Cenotaph: &Cenotaph{
-			Flaw: NewFlawP(Varint),
+			Flaw: FlawP(Varint),
 		},
 	}
 	assertArtifactSame(t, expected, actual)
@@ -437,7 +468,7 @@ func TestDuplicateEvenTagsProduceCenotaph(t *testing.T) {
 
 	expected := &Artifact{
 		Cenotaph: &Cenotaph{
-			Flaw:    NewFlawP(UnrecognizedEvenTag),
+			Flaw:    FlawP(UnrecognizedEvenTag),
 			Etching: &Rune{uint128.From64(4)},
 		},
 	}
@@ -515,7 +546,7 @@ func TestRunestoneWithUnrecognizedEvenTagIsCenotaph(t *testing.T) {
 
 	expected := &Artifact{
 		Cenotaph: &Cenotaph{
-			Flaw: NewFlawP(UnrecognizedEvenTag),
+			Flaw: FlawP(UnrecognizedEvenTag),
 		},
 	}
 	assertArtifactSame(t, expected, actual)
@@ -534,7 +565,7 @@ func TestRunestoneWithUnrecognizedFlagIsCenotaph(t *testing.T) {
 
 	expected := &Artifact{
 		Cenotaph: &Cenotaph{
-			Flaw: NewFlawP(UnrecognizedFlag),
+			Flaw: FlawP(UnrecognizedFlag),
 		},
 	}
 	assertArtifactSame(t, expected, actual)
@@ -552,8 +583,1584 @@ func TestRunestoneWithEdictIdWithZeroBlockAndNonzeroTxIsCenotaph(t *testing.T) {
 
 	expected := &Artifact{
 		Cenotaph: &Cenotaph{
-			Flaw: NewFlawP(EdictRuneId),
+			Flaw: FlawP(EdictRuneId),
 		},
 	}
 	assertArtifactSame(t, expected, actual)
+}
+func TestRunestoneWithOverflowingEdictIdDeltaIsCenotaph(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagBody),
+		uint128.From64(1),
+		uint128.From64(0),
+		uint128.From64(0),
+		uint128.From64(0),
+		uint128.Max,
+		uint128.From64(0),
+		uint128.From64(0),
+		uint128.From64(0),
+	})
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Cenotaph: &Cenotaph{
+			Flaw: FlawP(EdictRuneId),
+		},
+	}
+
+	assertArtifactSame(t, expected, actual)
+
+	actual, err = decipher([]uint128.Uint128{
+		itag(TagBody),
+		uint128.From64(1),
+		uint128.From64(1),
+		uint128.From64(0),
+		uint128.From64(0),
+		uint128.From64(0),
+		uint128.Max,
+		uint128.From64(0),
+		uint128.From64(0),
+	})
+
+	assert.NoError(t, err)
+	assertArtifactSame(t, expected, actual)
+}
+
+func TestRunestoneWithOutputOverMaxIsCenotaph(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagBody),
+		uint128.From64(1),
+		uint128.From64(1),
+		uint128.From64(2),
+		uint128.From64(2),
+	})
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Cenotaph: &Cenotaph{
+			Flaw: FlawP(EdictOutput),
+		},
+	}
+
+	assertArtifactSame(t, expected, actual)
+}
+
+func TestTagWithNoValueIsCenotaph(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagFlags),
+		uint128.From64(1),
+		itag(TagFlags),
+	})
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Cenotaph: &Cenotaph{
+			Flaw: FlawP(TruncatedField),
+		},
+	}
+
+	assertArtifactSame(t, expected, actual)
+}
+
+func TestTrailingIntegersInBodyIsCenotaph(t *testing.T) {
+	integers := []uint128.Uint128{
+		itag(TagBody),
+		uint128.From64(1),
+		uint128.From64(1),
+		uint128.From64(2),
+		uint128.From64(0),
+	}
+
+	for i := 0; i < 4; i++ {
+		actual, err := decipher(integers)
+		assert.NoError(t, err)
+
+		var expected *Artifact
+		if i == 0 {
+			expected = &Artifact{
+				Runestone: &Runestone{
+					Edicts: []Edict{
+						{
+							ID:     runeId(1),
+							Amount: uint128.From64(2),
+							Output: 0,
+						},
+					},
+				},
+			}
+		} else {
+			expected = &Artifact{
+				Cenotaph: &Cenotaph{
+					Flaw: FlawP(TrailingIntegers),
+				},
+			}
+		}
+
+		assertArtifactSame(t, expected, actual)
+
+		integers = append(integers, uint128.From64(0))
+	}
+}
+func TestDecipherEtchingWithDivisibility(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagFlags),
+		FlagEtching.Mask(),
+		itag(TagRune),
+		uint128.From64(4),
+		itag(TagDivisibility),
+		uint128.From64(5),
+		itag(TagBody),
+		uint128.From64(1),
+		uint128.From64(1),
+		uint128.From64(2),
+		uint128.From64(0),
+	})
+	assert.NoError(t, err)
+	u5 := uint8(5)
+	r := NewRune(uint128.From64(4))
+	expected := &Artifact{
+		Runestone: &Runestone{
+			Edicts: []Edict{
+				{
+					ID:     runeId(1),
+					Amount: uint128.From64(2),
+					Output: 0,
+				},
+			},
+			Etching: &Etching{
+				Rune:         &r,
+				Divisibility: &u5,
+			},
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+
+func TestDivisibilityAboveMaxIsIgnored(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagFlags),
+		FlagEtching.Mask(),
+		itag(TagRune),
+		uint128.From64(4),
+		itag(TagDivisibility),
+		uint128.From64(MaxDivisibility + 1),
+		itag(TagBody),
+		uint128.From64(1),
+		uint128.From64(1),
+		uint128.From64(2),
+		uint128.From64(0),
+	})
+	assert.NoError(t, err)
+
+	r := NewRune(uint128.From64(4))
+	expected := &Artifact{
+		Runestone: &Runestone{
+			Edicts: []Edict{
+				{
+					ID:     runeId(1),
+					Amount: uint128.From64(2),
+					Output: 0,
+				},
+			},
+			Etching: &Etching{
+				Rune: &r,
+			},
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+
+func TestSymbolAboveMaxIsIgnored(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagFlags),
+		FlagEtching.Mask(),
+		itag(TagSymbol),
+		uint128.From64(uint64(utf8.MaxRune) + 1),
+		itag(TagBody),
+		uint128.From64(1),
+		uint128.From64(1),
+		uint128.From64(2),
+		uint128.From64(0),
+	})
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Runestone: &Runestone{
+			Edicts: []Edict{
+				{
+					ID:     runeId(1),
+					Amount: uint128.From64(2),
+					Output: 0,
+				},
+			},
+			Etching: &Etching{},
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+
+func TestDecipherEtchingWithSymbol(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagFlags),
+		FlagEtching.Mask(),
+		itag(TagRune),
+		uint128.From64(4),
+		itag(TagSymbol),
+		uint128.From64('a'),
+		itag(TagBody),
+		uint128.From64(1),
+		uint128.From64(1),
+		uint128.From64(2),
+		uint128.From64(0),
+	})
+	assert.NoError(t, err)
+
+	r := NewRune(uint128.From64(4))
+	a := 'a'
+	expected := &Artifact{
+		Runestone: &Runestone{
+			Edicts: []Edict{
+				{
+					ID:     runeId(1),
+					Amount: uint128.From64(2),
+					Output: 0,
+				},
+			},
+			Etching: &Etching{
+				Rune:   &r,
+				Symbol: &a,
+			},
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+func TestDecipherEtchingWithAllEtchingTags(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagFlags),
+		FlagEtching.Mask().Or(FlagTerms.Mask()).Or(FlagTurbo.Mask()),
+		itag(TagRune),
+		uint128.From64(4),
+		itag(TagDivisibility),
+		uint128.From64(1),
+		itag(TagSpacers),
+		uint128.From64(5),
+		itag(TagSymbol),
+		uint128.From64('a'),
+		itag(TagOffsetEnd),
+		uint128.From64(2),
+		itag(TagAmount),
+		uint128.From64(3),
+		itag(TagPremine),
+		uint128.From64(8),
+		itag(TagCap),
+		uint128.From64(9),
+		itag(TagPointer),
+		uint128.From64(0),
+		itag(TagMint),
+		uint128.From64(1),
+		itag(TagMint),
+		uint128.From64(1),
+		itag(TagBody),
+		uint128.From64(1),
+		uint128.From64(1),
+		uint128.From64(2),
+		uint128.From64(0),
+	})
+	assert.NoError(t, err)
+
+	r := NewRune(uint128.From64(4))
+
+	expected := &Artifact{
+		Runestone: &Runestone{
+			Edicts: []Edict{
+				{
+					ID:     runeId(1),
+					Amount: uint128.From64(2),
+					Output: 0,
+				},
+			},
+			Etching: &Etching{
+				Divisibility: Uint8P(1),
+				Premine:      Uint128PFrom64(8),
+				Rune:         &r,
+				Spacers:      Uint32P(5),
+				Symbol:       CharP('a'),
+				Terms: &Terms{
+					Cap:    Uint128PFrom64(9),
+					Offset: [2]*uint64{nil, Uint64P(2)},
+					Amount: Uint128PFrom64(3),
+				},
+				Turbo: true,
+			},
+			Pointer: Uint32P(0),
+			Mint:    runeIdP(1),
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+func TestRecognizedEvenEtchingFieldsProduceCenotaphIfEtchingFlagIsNotSet(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagRune),
+		uint128.From64(4),
+	})
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Cenotaph: &Cenotaph{
+			Flaw: FlawP(UnrecognizedEvenTag),
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+func TestDecipherEtchingWithDivisibilityAndSymbol(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagFlags),
+		FlagEtching.Mask(),
+		itag(TagRune),
+		uint128.From64(4),
+		itag(TagDivisibility),
+		uint128.From64(1),
+		itag(TagSymbol),
+		uint128.From64('a'),
+		itag(TagBody),
+		uint128.From64(1),
+		uint128.From64(1),
+		uint128.From64(2),
+		uint128.From64(0),
+	})
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Runestone: &Runestone{
+			Edicts: []Edict{
+				{
+					ID:     runeId(1),
+					Amount: uint128.From64(2),
+					Output: 0,
+				},
+			},
+			Etching: &Etching{
+				Rune:         RuneP64(4),
+				Divisibility: Uint8P(1),
+				Symbol:       CharP('a'),
+			},
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+func TestTagValuesAreNotParsedAsTags(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagFlags),
+		FlagEtching.Mask(),
+		itag(TagDivisibility),
+		itag(TagBody),
+		itag(TagBody),
+		uint128.From64(1),
+		uint128.From64(1),
+		uint128.From64(2),
+		uint128.From64(0),
+	})
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Runestone: &Runestone{
+			Edicts: []Edict{
+				{
+					ID:     runeId(1),
+					Amount: uint128.From64(2),
+					Output: 0,
+				},
+			},
+			Etching: &Etching{
+				Divisibility: Uint8P(0),
+			},
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+func TestRunestoneMayContainMultipleEdicts(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagBody),
+		uint128.From64(1),
+		uint128.From64(1),
+		uint128.From64(2),
+		uint128.From64(0),
+		uint128.From64(0),
+		uint128.From64(3),
+		uint128.From64(5),
+		uint128.From64(0),
+	})
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Runestone: &Runestone{
+			Edicts: []Edict{
+				{
+					ID:     runeId(1),
+					Amount: uint128.From64(2),
+					Output: 0,
+				},
+				{
+					ID:     runeId(4),
+					Amount: uint128.From64(5),
+					Output: 0,
+				},
+			},
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+
+func TestRunestonesWithInvalidRuneIDBlocksAreCenotaph(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagBody),
+		uint128.From64(1),
+		uint128.From64(1),
+		uint128.From64(2),
+		uint128.From64(0),
+		uint128.Max,
+		uint128.From64(1),
+		uint128.From64(0),
+		uint128.From64(0),
+	})
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Cenotaph: &Cenotaph{
+			Flaw: FlawP(EdictRuneId),
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+func TestRunestonesWithInvalidRuneIdTxsAreCenotaph(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagBody),
+		uint128.From64(1),
+		uint128.From64(1),
+		uint128.From64(2),
+		uint128.From64(0),
+		uint128.From64(1),
+		uint128.Max,
+		uint128.From64(0),
+		uint128.From64(0),
+	})
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Cenotaph: &Cenotaph{
+			Flaw: FlawP(EdictRuneId),
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+func TestPayloadPushesAreConcatenated(t *testing.T) {
+	pkScript, _ := txscript.NewScriptBuilder().
+		AddOp(txscript.OP_RETURN).
+		AddOp(MAGIC_NUMBER).
+		AddData(EncodeUint64(uint64(TagFlags))).
+		AddData(EncodeUint128(FlagEtching.Mask())).
+		AddData(EncodeUint64(uint64(TagDivisibility))).
+		AddData(EncodeUint64(5)).
+		AddData(EncodeUint64(uint64(TagBody))).
+		AddData(EncodeUint64(1)).
+		AddData(EncodeUint64(1)).
+		AddData(EncodeUint64(2)).
+		AddData(EncodeUint64(0)).
+		Script()
+	tx := &wire.MsgTx{
+		Version:  2,
+		TxIn:     []*wire.TxIn{},
+		LockTime: 0,
+		TxOut: []*wire.TxOut{{
+			Value:    0,
+			PkScript: pkScript,
+		}},
+	}
+	r := &Runestone{}
+	artifact, err := r.Decipher(tx)
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Runestone: &Runestone{
+			Edicts: []Edict{{
+				ID:     runeId(1),
+				Amount: uint128.From64(2),
+				Output: 0,
+			}},
+			Etching: &Etching{
+				Divisibility: Uint8P(5),
+			},
+		},
+	}
+	assertArtifactSame(t, expected, artifact)
+}
+
+func TestRunestoneMayBeInSecondOutput(t *testing.T) {
+	payload := []byte{0, 1, 1, 2, 0}
+	pkScript, _ := txscript.NewScriptBuilder().
+		AddOp(txscript.OP_RETURN).AddOp(MAGIC_NUMBER).AddData(payload).Script()
+	tx := wire.NewMsgTx(2)
+	tx.AddTxOut(wire.NewTxOut(0, pkScript))
+	r := &Runestone{}
+	actual, err := r.Decipher(tx)
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Runestone: &Runestone{
+			Edicts: []Edict{
+				{
+					ID:     runeId(1),
+					Amount: uint128.From64(2),
+					Output: 0,
+				},
+			},
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+func TestRunestoneMayBeAfterNonMatchingOpReturn(t *testing.T) {
+	payload := []byte{0, 1, 1, 2, 0}
+	foo, _ := txscript.NewScriptBuilder().
+		AddOp(txscript.OP_RETURN).AddData([]byte("FOO")).Script()
+	pkScript, _ := txscript.NewScriptBuilder().
+		AddOp(txscript.OP_RETURN).AddOp(MAGIC_NUMBER).AddData(payload).Script()
+
+	expected := &Artifact{
+		Runestone: &Runestone{
+			Edicts: []Edict{
+				{
+					ID:     runeId(1),
+					Amount: uint128.From64(2),
+					Output: 0,
+				},
+			},
+		},
+	}
+
+	tx := wire.NewMsgTx(wire.TxVersion)
+	tx.AddTxOut(wire.NewTxOut(0, foo))
+	tx.AddTxOut(wire.NewTxOut(0, pkScript))
+	r := &Runestone{}
+	actual, err := r.Decipher(tx)
+	assert.NoError(t, err)
+	assertArtifactSame(t, expected, actual)
+}
+func TestRunestoneSize(t *testing.T) {
+	type testCase struct {
+		edicts   []Edict
+		etching  *Etching
+		expected int
+	}
+
+	cases := []testCase{
+		{
+			edicts:   []Edict{},
+			etching:  nil,
+			expected: 2,
+		},
+		{
+			edicts: []Edict{},
+			etching: &Etching{
+				Rune: RuneP64(0),
+			},
+			expected: 7,
+		},
+		{
+			edicts: []Edict{},
+			etching: &Etching{
+				Divisibility: Uint8P(MaxDivisibility),
+				Rune:         RuneP64(0),
+			},
+			expected: 9,
+		},
+		{
+			edicts: []Edict{},
+			etching: &Etching{
+				Divisibility: Uint8P(MaxDivisibility),
+				Terms: &Terms{
+					Cap:    Uint128PFrom64(math.MaxUint32),
+					Amount: Uint128PFrom64(math.MaxUint64),
+					Offset: [2]*uint64{Uint64P(math.MaxUint32), Uint64P(math.MaxUint32)},
+					Height: [2]*uint64{Uint64P(math.MaxUint32), Uint64P(math.MaxUint32)},
+				},
+				Turbo:   true,
+				Premine: Uint128PFrom64(math.MaxUint64),
+				Rune:    &Rune{Value: uint128.Max},
+				Symbol:  CharP('\U0010FFFF'),
+				Spacers: Uint32P(MaxSpacers),
+			},
+			expected: 89,
+		},
+		{
+			edicts: []Edict{},
+			etching: &Etching{
+				Rune: &Rune{Value: uint128.Max},
+			},
+			expected: 25,
+		},
+		{
+			edicts: []Edict{
+				{
+					Amount: uint128.Zero,
+					ID:     RuneId{Block: 0, Tx: 0},
+					Output: 0,
+				},
+			},
+			etching: &Etching{
+				Divisibility: Uint8P(MaxDivisibility),
+				Rune:         &Rune{Value: uint128.Max},
+			},
+			expected: 32,
+		},
+		{
+			edicts: []Edict{
+				{
+					Amount: uint128.Max,
+					ID:     RuneId{Block: 0, Tx: 0},
+					Output: 0,
+				},
+			},
+			etching: &Etching{
+				Divisibility: Uint8P(MaxDivisibility),
+				Rune:         &Rune{Value: uint128.Max},
+			},
+			expected: 50,
+		},
+		{
+			edicts: []Edict{
+				{
+					Amount: uint128.Zero,
+					ID:     RuneId{Block: 1000000, Tx: math.MaxUint32},
+					Output: 0,
+				},
+			},
+			etching:  nil,
+			expected: 14,
+		},
+		{
+			edicts: []Edict{
+				{
+					Amount: uint128.Max,
+					ID:     RuneId{Block: 1000000, Tx: math.MaxUint32},
+					Output: 0,
+				},
+			},
+			etching:  nil,
+			expected: 32,
+		},
+		{
+			edicts: []Edict{
+				{
+					Amount: uint128.Max,
+					ID:     RuneId{Block: 1000000, Tx: math.MaxUint32},
+					Output: 0,
+				},
+				{
+					Amount: uint128.Max,
+					ID:     RuneId{Block: 1000000, Tx: math.MaxUint32},
+					Output: 0,
+				},
+			},
+			etching:  nil,
+			expected: 54,
+		},
+		{
+			edicts: []Edict{
+				{
+					Amount: uint128.Max,
+					ID:     RuneId{Block: 1000000, Tx: math.MaxUint32},
+					Output: 0,
+				},
+				{
+					Amount: uint128.Max,
+					ID:     RuneId{Block: 1000000, Tx: math.MaxUint32},
+					Output: 0,
+				},
+				{
+					Amount: uint128.Max,
+					ID:     RuneId{Block: 1000000, Tx: math.MaxUint32},
+					Output: 0,
+				},
+			},
+			etching:  nil,
+			expected: 76,
+		},
+		{
+			edicts: []Edict{
+				{
+					Amount: uint128.From64(math.MaxUint64),
+					ID:     RuneId{Block: 1000000, Tx: math.MaxUint32},
+					Output: 0,
+				},
+				{
+					Amount: uint128.From64(math.MaxUint64),
+					ID:     RuneId{Block: 1000000, Tx: math.MaxUint32},
+					Output: 0,
+				},
+				{
+					Amount: uint128.From64(math.MaxUint64),
+					ID:     RuneId{Block: 1000000, Tx: math.MaxUint32},
+					Output: 0,
+				},
+				{
+					Amount: uint128.From64(math.MaxUint64),
+					ID:     RuneId{Block: 1000000, Tx: math.MaxUint32},
+					Output: 0,
+				},
+			},
+			etching:  nil,
+			expected: 62,
+		},
+		{
+			edicts: []Edict{
+				{
+					Amount: uint128.From64(math.MaxUint64),
+					ID:     RuneId{Block: 1000000, Tx: math.MaxUint32},
+					Output: 0,
+				},
+				{
+					Amount: uint128.From64(math.MaxUint64),
+					ID:     RuneId{Block: 1000000, Tx: math.MaxUint32},
+					Output: 0,
+				},
+				{
+					Amount: uint128.From64(math.MaxUint64),
+					ID:     RuneId{Block: 1000000, Tx: math.MaxUint32},
+					Output: 0,
+				},
+				{
+					Amount: uint128.From64(math.MaxUint64),
+					ID:     RuneId{Block: 1000000, Tx: math.MaxUint32},
+					Output: 0,
+				},
+				{
+					Amount: uint128.From64(math.MaxUint64),
+					ID:     RuneId{Block: 1000000, Tx: math.MaxUint32},
+					Output: 0,
+				},
+			},
+			etching:  nil,
+			expected: 75,
+		},
+		{
+			edicts: []Edict{
+				{
+					Amount: uint128.From64(math.MaxUint64),
+					ID:     RuneId{Block: 0, Tx: math.MaxUint32},
+					Output: 0,
+				},
+				{
+					Amount: uint128.From64(math.MaxUint64),
+					ID:     RuneId{Block: 0, Tx: math.MaxUint32},
+					Output: 0,
+				},
+				{
+					Amount: uint128.From64(math.MaxUint64),
+					ID:     RuneId{Block: 0, Tx: math.MaxUint32},
+					Output: 0,
+				},
+				{
+					Amount: uint128.From64(math.MaxUint64),
+					ID:     RuneId{Block: 0, Tx: math.MaxUint32},
+					Output: 0,
+				},
+				{
+					Amount: uint128.From64(math.MaxUint64),
+					ID:     RuneId{Block: 0, Tx: math.MaxUint32},
+					Output: 0,
+				},
+			},
+			etching:  nil,
+			expected: 73,
+		},
+		{
+			edicts: []Edict{
+				{
+					Amount: uint128FromString("1000000000000000000"),
+					ID:     RuneId{Block: 1000000, Tx: math.MaxUint32},
+					Output: 0,
+				},
+				{
+					Amount: uint128FromString("1000000000000000000"),
+					ID:     RuneId{Block: 1000000, Tx: math.MaxUint32},
+					Output: 0,
+				},
+				{
+					Amount: uint128FromString("1000000000000000000"),
+					ID:     RuneId{Block: 1000000, Tx: math.MaxUint32},
+					Output: 0,
+				},
+				{
+					Amount: uint128FromString("1000000000000000000"),
+					ID:     RuneId{Block: 1000000, Tx: math.MaxUint32},
+					Output: 0,
+				},
+				{
+					Amount: uint128FromString("1000000000000000000"),
+					ID:     RuneId{Block: 1000000, Tx: math.MaxUint32},
+					Output: 0,
+				},
+			},
+			etching:  nil,
+			expected: 70,
+		},
+	}
+
+	for _, c := range cases {
+		runestone := &Runestone{
+			Edicts:  c.edicts,
+			Etching: c.etching,
+		}
+		code, err := runestone.Encipher()
+		assert.NoError(t, err)
+		actual := len(code)
+		assert.Equal(t, c.expected, actual)
+	}
+}
+func uint128FromString(str string) uint128.Uint128 {
+	v, _ := uint128.FromString(str)
+	return v
+}
+func TestEtchingWithTermGreaterThanMaximumIsStillAnEtching(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagFlags),
+		FlagEtching.Mask(),
+		itag(TagOffsetEnd),
+		uint128.From64(math.MaxUint64).Add(uint128.From64(1)),
+	})
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Cenotaph: &Cenotaph{
+			Flaw: FlawP(UnrecognizedEvenTag),
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+func TestEncipher(t *testing.T) {
+	caseFunc := func(runestone Runestone, expected []uint128.Uint128) {
+		scriptPubkey, _ := runestone.Encipher()
+
+		transaction := &wire.MsgTx{
+			TxIn: []*wire.TxIn{},
+			TxOut: []*wire.TxOut{
+				{
+					PkScript: scriptPubkey,
+					Value:    0,
+				},
+			},
+			LockTime: 0,
+			Version:  2,
+		}
+
+		payload, err := runestone.payload(transaction)
+		if err != nil {
+			t.Fatalf("invalid payload: %v", err)
+		}
+
+		actual, err := runestone.integers(payload.Valid)
+		if err != nil {
+			t.Fatalf("failed to get integers: %v", err)
+		}
+
+		assert.Equal(t, expected, actual)
+
+		sort.Slice(runestone.Edicts, func(i, j int) bool {
+			return runestone.Edicts[i].ID.Cmp(runestone.Edicts[j].ID) < 0
+		})
+
+		artifact, err := runestone.Decipher(transaction)
+		if err != nil {
+			t.Fatalf("failed to decipher: %v", err)
+		}
+
+		assertArtifactSame(t, &Artifact{Runestone: &runestone}, artifact)
+	}
+	//    case(Runestone::default(), &[]);
+	caseFunc(Runestone{}, []uint128.Uint128{})
+
+	runeId1 := NewRuneId(2, 3)
+	runeId2 := NewRuneId(5, 6)
+	runeId3 := NewRuneId(17, 18)
+	caseFunc(
+		Runestone{
+			Edicts: []Edict{
+				{
+					ID:     *runeId1,
+					Amount: uint128.From64(1),
+					Output: 0,
+				},
+				{
+					ID:     *runeId2,
+					Amount: uint128.From64(4),
+					Output: 1,
+				},
+			},
+			Etching: &Etching{
+				Divisibility: Uint8P(7),
+				Premine:      Uint128PFrom64(8),
+				Rune:         RuneP64(9),
+				Spacers:      Uint32P(10),
+				Symbol:       CharP('@'),
+				Terms: &Terms{
+					Cap:    Uint128PFrom64(11),
+					Height: [2]*uint64{Uint64P(12), Uint64P(13)},
+					Amount: Uint128PFrom64(14),
+					Offset: [2]*uint64{Uint64P(15), Uint64P(16)},
+				},
+				Turbo: true,
+			},
+			Mint:    runeId3,
+			Pointer: Uint32P(0),
+		},
+		[]uint128.Uint128{
+			itag(TagFlags),
+			FlagEtching.Mask().Or(FlagTerms.Mask()).Or(FlagTurbo.Mask()),
+			itag(TagRune),
+			uint128.From64(9),
+			itag(TagDivisibility),
+			uint128.From64(7),
+			itag(TagSpacers),
+			uint128.From64(10),
+			itag(TagSymbol),
+			uint128.From64('@'),
+			itag(TagPremine),
+			uint128.From64(8),
+			itag(TagAmount),
+			uint128.From64(14),
+			itag(TagCap),
+			uint128.From64(11),
+			itag(TagHeightStart),
+			uint128.From64(12),
+			itag(TagHeightEnd),
+			uint128.From64(13),
+			itag(TagOffsetStart),
+			uint128.From64(15),
+			itag(TagOffsetEnd),
+			uint128.From64(16),
+			itag(TagMint),
+			uint128.From64(17),
+			itag(TagMint),
+			uint128.From64(18),
+			itag(TagPointer),
+			uint128.From64(0),
+			itag(TagBody),
+			uint128.From64(2),
+			uint128.From64(3),
+			uint128.From64(1),
+			uint128.From64(0),
+			uint128.From64(3),
+			uint128.From64(6),
+			uint128.From64(4),
+			uint128.From64(1),
+		},
+	)
+
+	caseFunc(
+		Runestone{
+			Etching: &Etching{
+				Rune: RuneP64(3),
+			},
+		},
+		[]uint128.Uint128{
+			itag(TagFlags),
+			FlagEtching.Mask(),
+			itag(TagRune),
+			uint128.From64(3),
+		},
+	)
+
+	caseFunc(
+		Runestone{
+			Etching: &Etching{},
+		},
+		[]uint128.Uint128{
+			itag(TagFlags),
+			FlagEtching.Mask(),
+		},
+	)
+}
+func TestRunestonePayloadIsChunked(t *testing.T) {
+	script := &Runestone{
+		Edicts: make([]Edict, 129),
+	}
+	data, err := script.Encipher()
+	assert.NoError(t, err)
+	assert.Equal(t, 3, len(data))
+
+	script = &Runestone{
+		Edicts: make([]Edict, 130),
+	}
+	data, err = script.Encipher()
+	assert.NoError(t, err)
+
+	assert.Equal(t, 4, len(data))
+}
+func TestEdictOutputGreaterThan32MaxProducesCenotaph(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagBody),
+		uint128.From64(1),
+		uint128.From64(1),
+		uint128.From64(1),
+		uint128.From64(math.MaxUint32).Add(uint128.From64(1)),
+	})
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Cenotaph: &Cenotaph{
+			Flaw: FlawP(EdictOutput),
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+
+func TestPartialMintProducesCenotaph(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagMint),
+		uint128.From64(1),
+	})
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Cenotaph: &Cenotaph{
+			Flaw: FlawP(UnrecognizedEvenTag),
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+
+func TestInvalidMintProducesCenotaph(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagMint),
+		uint128.Zero,
+		itag(TagMint),
+		uint128.From64(1),
+	})
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Cenotaph: &Cenotaph{
+			Flaw: FlawP(UnrecognizedEvenTag),
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+func TestInvalidDeadlineProducesCenotaph(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagOffsetEnd),
+		uint128.Max,
+	})
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Cenotaph: &Cenotaph{
+			Flaw: FlawP(UnrecognizedEvenTag),
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+
+func TestInvalidDefaultOutputProducesCenotaph(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagPointer),
+		uint128.From64(1),
+	})
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Cenotaph: &Cenotaph{
+			Flaw: FlawP(UnrecognizedEvenTag),
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+
+	actual, err = decipher([]uint128.Uint128{
+		itag(TagPointer),
+		uint128.Max,
+	})
+	assert.NoError(t, err)
+	assertArtifactSame(t, expected, actual)
+}
+
+func TestInvalidDivisibilityDoesNotProduceCenotaph(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagDivisibility),
+		uint128.Max,
+	})
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Runestone: &Runestone{},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+func TestMinAndMaxRunesAreNotCenotaphs(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagFlags),
+		iflag(FlagEtching),
+		itag(TagRune),
+		uint128.From64(0),
+	})
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Runestone: &Runestone{
+			Etching: &Etching{
+				Rune: RuneP64(0),
+			},
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+
+	actual, err = decipher([]uint128.Uint128{
+		itag(TagFlags),
+		iflag(FlagEtching),
+		itag(TagRune),
+		uint128.Max,
+	})
+	assert.NoError(t, err)
+
+	expected = &Artifact{
+		Runestone: &Runestone{
+			Etching: &Etching{
+				Rune: &Rune{Value: uint128.Max},
+			},
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+func TestInvalidSpacersDoesNotProduceCenotaph(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagSpacers),
+		uint128.Max,
+	})
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Runestone: &Runestone{},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+
+func TestInvalidSymbolDoesNotProduceCenotaph(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagSymbol),
+		uint128.Max,
+	})
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Runestone: &Runestone{},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+
+func TestInvalidTermProducesCenotaph(t *testing.T) {
+	actual, err := decipher([]uint128.Uint128{
+		itag(TagOffsetEnd),
+		uint128.Max,
+	})
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Cenotaph: &Cenotaph{
+			Flaw: FlawP(UnrecognizedEvenTag),
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+func TestInvalidSupplyProducesCenotaph(t *testing.T) {
+	actual1, err1 := decipher([]uint128.Uint128{
+		itag(TagFlags),
+		FlagEtching.Mask().Or(FlagTerms.Mask()),
+		itag(TagCap),
+		uint128.From64(1),
+		itag(TagAmount),
+		uint128.Max,
+	})
+	assert.NoError(t, err1)
+
+	expected1 := &Artifact{
+		Runestone: &Runestone{
+			Etching: &Etching{
+				Terms: &Terms{
+					Cap:    Uint128PFrom64(1),
+					Amount: Uint128P(uint128.Max),
+					Height: [2]*uint64{nil, nil},
+					Offset: [2]*uint64{nil, nil},
+				},
+			},
+		},
+	}
+	assertArtifactSame(t, expected1, actual1)
+
+	actual2, err2 := decipher([]uint128.Uint128{
+		itag(TagFlags),
+		FlagEtching.Mask().Or(FlagTerms.Mask()),
+		itag(TagCap),
+		uint128.From64(2),
+		itag(TagAmount),
+		uint128.Max,
+	})
+	assert.NoError(t, err2)
+
+	expected2 := &Artifact{
+		Cenotaph: &Cenotaph{
+			Flaw: FlawP(SupplyOverflow),
+		},
+	}
+	assertArtifactSame(t, expected2, actual2)
+
+	actual3, err3 := decipher([]uint128.Uint128{
+		itag(TagFlags),
+		FlagEtching.Mask().Or(FlagTerms.Mask()),
+		itag(TagCap),
+		uint128.From64(2),
+		itag(TagAmount),
+		uint128.Max.Div(uint128.From64(2)).Add(uint128.From64(1)),
+	})
+	assert.NoError(t, err3)
+
+	expected3 := &Artifact{
+		Cenotaph: &Cenotaph{
+			Flaw: FlawP(SupplyOverflow),
+		},
+	}
+	assertArtifactSame(t, expected3, actual3)
+
+	actual4, err4 := decipher([]uint128.Uint128{
+		itag(TagFlags),
+		FlagEtching.Mask().Or(FlagTerms.Mask()),
+		itag(TagPremine),
+		uint128.From64(1),
+		itag(TagCap),
+		uint128.From64(1),
+		itag(TagAmount),
+		uint128.Max,
+	})
+	assert.NoError(t, err4)
+
+	expected4 := &Artifact{
+		Cenotaph: &Cenotaph{
+			Flaw: FlawP(SupplyOverflow),
+		},
+	}
+	assertArtifactSame(t, expected4, actual4)
+}
+func TestInvalidScriptsInOpReturnsWithoutMagicNumberAreIgnored(t *testing.T) {
+	tx1 := &wire.MsgTx{
+		Version: 2,
+		TxIn: []*wire.TxIn{
+			{
+				PreviousOutPoint: wire.OutPoint{},
+				SignatureScript:  []byte{},
+				Sequence:         wire.MaxTxInSequenceNum,
+			},
+		},
+		TxOut: []*wire.TxOut{
+			{
+				PkScript: []byte{
+					txscript.OP_RETURN,
+					txscript.OP_DATA_4,
+				},
+				Value: 0,
+			},
+		},
+	}
+	r := &Runestone{}
+	actual1, err := r.Decipher(tx1)
+	assert.NoError(t, err)
+	assert.Nil(t, actual1)
+
+	pkScript, _ := r.Encipher()
+	tx2 := &wire.MsgTx{
+		Version: 2,
+		TxIn: []*wire.TxIn{
+			{
+				PreviousOutPoint: wire.OutPoint{},
+				SignatureScript:  []byte{},
+				Sequence:         wire.MaxTxInSequenceNum,
+			},
+		},
+		TxOut: []*wire.TxOut{
+			{
+				PkScript: []byte{
+					txscript.OP_RETURN,
+					txscript.OP_DATA_4,
+				},
+				Value: 0,
+			},
+			{
+				PkScript: pkScript,
+				Value:    0,
+			},
+		},
+	}
+	actual2, err := r.Decipher(tx2)
+	assert.NoError(t, err)
+
+	expected2 := &Artifact{
+		Runestone: r,
+	}
+	assertArtifactSame(t, expected2, actual2)
+}
+func TestInvalidScriptsInOpReturnsWithMagicNumberProduceCenotaph(t *testing.T) {
+	tx := &wire.MsgTx{
+		Version: 2,
+		TxIn: []*wire.TxIn{
+			{
+				PreviousOutPoint: wire.OutPoint{},
+				SignatureScript:  []byte{},
+				Sequence:         wire.MaxTxInSequenceNum,
+			},
+		},
+		TxOut: []*wire.TxOut{
+			{
+				PkScript: []byte{
+					txscript.OP_RETURN,
+					byte(MAGIC_NUMBER),
+					txscript.OP_DATA_4,
+				},
+				Value: 0,
+			},
+		},
+	}
+	r := &Runestone{}
+	actual, err := r.Decipher(tx)
+	assert.NoError(t, err)
+
+	expected := &Artifact{
+		Cenotaph: &Cenotaph{
+			Flaw: FlawP(InvalidScript),
+		},
+	}
+	assertArtifactSame(t, expected, actual)
+}
+func TestAllPushdataOpcodesAreValid(t *testing.T) {
+	for i := 0; i < 79; i++ {
+		var scriptPubKey []byte
+
+		scriptPubKey = append(scriptPubKey, byte(txscript.OP_RETURN))
+		scriptPubKey = append(scriptPubKey, byte(MAGIC_NUMBER))
+		scriptPubKey = append(scriptPubKey, byte(i))
+
+		switch i {
+		case 0:
+			fallthrough
+		case 1:
+			fallthrough
+		case 2:
+			fallthrough
+		case 3:
+			fallthrough
+		case 4:
+			fallthrough
+		case 5:
+			fallthrough
+		case 6:
+			fallthrough
+		case 7:
+			fallthrough
+		case 8:
+			fallthrough
+		case 9:
+			fallthrough
+		case 10:
+			fallthrough
+		case 11:
+			fallthrough
+		case 12:
+			fallthrough
+		case 13:
+			fallthrough
+		case 14:
+			fallthrough
+		case 15:
+			fallthrough
+		case 16:
+			fallthrough
+		case 17:
+			fallthrough
+		case 18:
+			fallthrough
+		case 19:
+			fallthrough
+		case 20:
+			fallthrough
+		case 21:
+			fallthrough
+		case 22:
+			fallthrough
+		case 23:
+			fallthrough
+		case 24:
+			fallthrough
+		case 25:
+			fallthrough
+		case 26:
+			fallthrough
+		case 27:
+			fallthrough
+		case 28:
+			fallthrough
+		case 29:
+			fallthrough
+		case 30:
+			fallthrough
+		case 31:
+			fallthrough
+		case 32:
+			fallthrough
+		case 33:
+			fallthrough
+		case 34:
+			fallthrough
+		case 35:
+			fallthrough
+		case 36:
+			fallthrough
+		case 37:
+			fallthrough
+		case 38:
+			fallthrough
+		case 39:
+			fallthrough
+		case 40:
+			fallthrough
+		case 41:
+			fallthrough
+		case 42:
+			fallthrough
+		case 43:
+			fallthrough
+		case 44:
+			fallthrough
+		case 45:
+			fallthrough
+		case 46:
+			fallthrough
+		case 47:
+			fallthrough
+		case 48:
+			fallthrough
+		case 49:
+			fallthrough
+		case 50:
+			fallthrough
+		case 51:
+			fallthrough
+		case 52:
+			fallthrough
+		case 53:
+			fallthrough
+		case 54:
+			fallthrough
+		case 55:
+			fallthrough
+		case 56:
+			fallthrough
+		case 57:
+			fallthrough
+		case 58:
+			fallthrough
+		case 59:
+			fallthrough
+		case 60:
+			fallthrough
+		case 61:
+			fallthrough
+		case 62:
+			fallthrough
+		case 63:
+			fallthrough
+		case 64:
+			fallthrough
+		case 65:
+			fallthrough
+		case 66:
+			fallthrough
+		case 67:
+			fallthrough
+		case 68:
+			fallthrough
+		case 69:
+			fallthrough
+		case 70:
+			fallthrough
+		case 71:
+			fallthrough
+		case 72:
+			fallthrough
+		case 73:
+			fallthrough
+		case 74:
+			fallthrough
+		case 75:
+			for j := 0; j < i; j++ {
+				if j%2 == 0 {
+					scriptPubKey = append(scriptPubKey, 1)
+				} else {
+					scriptPubKey = append(scriptPubKey, 0)
+				}
+			}
+
+			if i%2 == 1 {
+				scriptPubKey = append(scriptPubKey, 1)
+				scriptPubKey = append(scriptPubKey, 1)
+			}
+		case 76:
+			scriptPubKey = append(scriptPubKey, 0)
+		case 77:
+			scriptPubKey = append(scriptPubKey, 0)
+			scriptPubKey = append(scriptPubKey, 0)
+		case 78:
+			scriptPubKey = append(scriptPubKey, 0)
+			scriptPubKey = append(scriptPubKey, 0)
+			scriptPubKey = append(scriptPubKey, 0)
+			scriptPubKey = append(scriptPubKey, 0)
+		default:
+			t.Fatal("unreachable")
+		}
+
+		tx := &wire.MsgTx{
+			Version: 2,
+
+			TxOut: []*wire.TxOut{
+				{
+					PkScript: scriptPubKey,
+					Value:    0,
+				},
+			},
+		}
+		r := &Runestone{}
+		artifact, err := r.Decipher(tx)
+		assert.NoError(t, err)
+		assertArtifactSame(t, &Artifact{Runestone: &Runestone{}}, artifact)
+	}
+}
+func TestAllNonPushdataOpcodesAreInvalid(t *testing.T) {
+	for i := 79; i <= math.MaxUint8; i++ {
+		pkScript, _ := txscript.NewScriptBuilder().AddOp(txscript.OP_RETURN).AddOp(byte(MAGIC_NUMBER)).AddOp(byte(i)).Script()
+
+		tx := &wire.MsgTx{
+			Version: 2,
+
+			TxOut: []*wire.TxOut{
+				{
+					PkScript: pkScript,
+					Value:    0,
+				},
+			},
+		}
+		r := &Runestone{}
+		artifact, err := r.Decipher(tx)
+		assert.NoError(t, err)
+
+		expected := &Artifact{
+			Cenotaph: &Cenotaph{
+				Flaw: FlawP(Opcode),
+			},
+		}
+		assertArtifactSame(t, expected, artifact)
+	}
 }
