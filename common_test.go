@@ -12,3 +12,8 @@ func TestEncodeBig(t *testing.T) {
 	result := Encode(zero)
 	assert.Equal(t, 1, len(result))
 }
+func TestEncodeChar(t *testing.T) {
+	result := EncodeChar(rune(0x10FFFF))
+	t.Logf("%v,%x", result, result)
+	assert.EqualValues(t, []byte{0xff, 0xff, 0x43}, result)
+}

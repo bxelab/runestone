@@ -52,8 +52,16 @@ func TagTake[T any](t Tag, fields map[Tag][]uint128.Uint128, with func([]uint128
 	if len(n) > 0 {
 		N = n[0]
 	}
-
+	//check filed length
+	if len(field) < N {
+		return nil, errors.New("field length is less than N")
+	}
 	values := make([]uint128.Uint128, N)
+	//for i := 0; i < N; i++ {
+	//	if len(field)>i {
+	//		values[i] = field[i]
+	//	}
+	//}
 	copy(values, field)
 
 	value, err := with(values)

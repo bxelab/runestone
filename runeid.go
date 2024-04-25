@@ -3,6 +3,7 @@ package go_runestone
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -14,11 +15,11 @@ type RuneId struct {
 	Tx    uint32
 }
 
-func NewRuneId(block uint64, tx uint32) *RuneId {
+func NewRuneId(block uint64, tx uint32) (*RuneId, error) {
 	if block == 0 && tx > 0 {
-		return nil
+		return nil, errors.New("block=0 but tx>0")
 	}
-	return &RuneId{Block: block, Tx: tx}
+	return &RuneId{Block: block, Tx: tx}, nil
 }
 
 func (r RuneId) Delta(next RuneId) (uint64, uint32, error) {
@@ -39,6 +40,13 @@ func (r RuneId) Delta(next RuneId) (uint64, uint32, error) {
 }
 
 func (r RuneId) Next(block uint128.Uint128, tx uint128.Uint128) (*RuneId, error) {
+	//check block overflow
+	if block.Hi > 0 {
+		return nil, fmt.Errorf("block overflow")
+	}
+	if tx.Hi > 0 || tx.Lo > math.MaxUint32 {
+		return nil, fmt.Errorf("tx overflow")
+	}
 	newBlock := r.Block + block.Lo
 	//check for overflow
 	if newBlock < r.Block {
@@ -55,7 +63,11 @@ func (r RuneId) Next(block uint128.Uint128, tx uint128.Uint128) (*RuneId, error)
 	} else {
 		newTx = uint32(tx.Lo)
 	}
-	return NewRuneId(newBlock, newTx), nil
+	runeId, err := NewRuneId(newBlock, newTx)
+	if err != nil {
+		return nil, err
+	}
+	return runeId, nil
 }
 
 func (r RuneId) String() string {
@@ -75,7 +87,7 @@ func RuneIdFromString(s string) (*RuneId, error) {
 	if err != nil {
 		return nil, ErrTransaction(parts[1])
 	}
-	return NewRuneId(block, uint32(tx)), nil
+	return NewRuneId(block, uint32(tx))
 }
 
 var (

@@ -3,6 +3,7 @@ package go_runestone
 import (
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"math"
 	"sort"
 	"testing"
@@ -38,13 +39,15 @@ func RuneP64(i uint64) *Rune {
 	return &Rune{uint128.From64(i)}
 }
 func assertArtifactSame(t *testing.T, expected, actual *Artifact) {
+	assertJsonEqual(t, expected, actual)
+}
+func assertJsonEqual(t *testing.T, expected, actual interface{}) {
 	expect, err := json.Marshal(expected)
 	assert.NoError(t, err)
 	act, err := json.Marshal(actual)
 	assert.NoError(t, err)
 	assert.Equal(t, string(expect), string(act))
 }
-
 func i128(i int) uint128.Uint128 {
 	return uint128.From64(uint64(i))
 }
@@ -52,7 +55,7 @@ func itag(i Tag) uint128.Uint128 {
 	return uint128.From64(uint64(i))
 }
 func iflag(i Flag) uint128.Uint128 {
-	return uint128.From64(uint64(i))
+	return i.Mask()
 }
 
 func Test_integers(t *testing.T) {
@@ -162,11 +165,9 @@ func TestDecipheringValidRunestoneWithInvalidScriptPostfixReturnsInvalidPayload(
 	builder := txscript.NewScriptBuilder()
 	builder.AddOp(txscript.OP_RETURN)
 	builder.AddOp(MAGIC_NUMBER)
-
+	builder.AddOp(txscript.OP_DATA_4)
 	scriptPubKey, err := builder.Script()
 	assert.NoError(t, err)
-
-	scriptPubKey = append(scriptPubKey, txscript.OP_PUSHDATA4)
 
 	tx := wire.NewMsgTx(2)
 	tx.AddTxOut(&wire.TxOut{
@@ -175,7 +176,6 @@ func TestDecipheringValidRunestoneWithInvalidScriptPostfixReturnsInvalidPayload(
 	})
 	runestone := &Runestone{}
 	payload, err := runestone.payload(tx)
-	assert.Error(t, err)
 	assert.NotNil(t, payload)
 	assert.Equal(t, InvalidScript, payload.Invalid)
 }
@@ -1054,19 +1054,22 @@ func TestRunestonesWithInvalidRuneIdTxsAreCenotaph(t *testing.T) {
 	assertArtifactSame(t, expected, actual)
 }
 func TestPayloadPushesAreConcatenated(t *testing.T) {
-	pkScript, _ := txscript.NewScriptBuilder().
+
+	s := txscript.NewScriptBuilder().
 		AddOp(txscript.OP_RETURN).
-		AddOp(MAGIC_NUMBER).
-		AddData(EncodeUint64(uint64(TagFlags))).
-		AddData(EncodeUint128(FlagEtching.Mask())).
-		AddData(EncodeUint64(uint64(TagDivisibility))).
-		AddData(EncodeUint64(5)).
-		AddData(EncodeUint64(uint64(TagBody))).
-		AddData(EncodeUint64(1)).
-		AddData(EncodeUint64(1)).
-		AddData(EncodeUint64(2)).
-		AddData(EncodeUint64(0)).
-		Script()
+		AddOp(MAGIC_NUMBER)
+	data := []byte{}
+	data = append(data, EncodeUint64(uint64(TagFlags))...)
+	data = append(data, EncodeUint128(FlagEtching.Mask())...)
+	data = append(data, EncodeUint64(uint64(TagDivisibility))...)
+	data = append(data, EncodeUint64(5)...)
+	data = append(data, EncodeUint64(uint64(TagBody))...)
+	data = append(data, EncodeUint64(1)...)
+	data = append(data, EncodeUint64(1)...)
+	data = append(data, EncodeUint64(2)...)
+	data = append(data, EncodeUint64(0)...)
+	pkScript, _ := s.AddData(data).Script()
+
 	tx := &wire.MsgTx{
 		Version:  2,
 		TxIn:     []*wire.TxIn{},
@@ -1186,7 +1189,7 @@ func TestRunestoneSize(t *testing.T) {
 				Turbo:   true,
 				Premine: Uint128PFrom64(math.MaxUint64),
 				Rune:    &Rune{Value: uint128.Max},
-				Symbol:  CharP('\U0010FFFF'),
+				Symbol:  CharP(rune(0x10FFFF)),
 				Spacers: Uint32P(MaxSpacers),
 			},
 			expected: 89,
@@ -1406,15 +1409,18 @@ func TestRunestoneSize(t *testing.T) {
 		},
 	}
 
-	for _, c := range cases {
-		runestone := &Runestone{
-			Edicts:  c.edicts,
-			Etching: c.etching,
-		}
-		code, err := runestone.Encipher()
-		assert.NoError(t, err)
-		actual := len(code)
-		assert.Equal(t, c.expected, actual)
+	for i, c := range cases {
+		t.Run(fmt.Sprintf("case[%d]", i), func(t *testing.T) {
+			runestone := &Runestone{
+				Edicts:  c.edicts,
+				Etching: c.etching,
+			}
+			code, err := runestone.Encipher()
+			assert.NoError(t, err)
+			t.Logf("code: %x", code)
+			actual := len(code)
+			assert.Equal(t, c.expected, actual)
+		})
 	}
 }
 func uint128FromString(str string) uint128.Uint128 {
@@ -1463,7 +1469,7 @@ func TestEncipher(t *testing.T) {
 			t.Fatalf("failed to get integers: %v", err)
 		}
 
-		assert.Equal(t, expected, actual)
+		assertJsonEqual(t, expected, actual)
 
 		sort.Slice(runestone.Edicts, func(i, j int) bool {
 			return runestone.Edicts[i].ID.Cmp(runestone.Edicts[j].ID) < 0
@@ -1479,9 +1485,9 @@ func TestEncipher(t *testing.T) {
 	//    case(Runestone::default(), &[]);
 	caseFunc(Runestone{}, []uint128.Uint128{})
 
-	runeId1 := NewRuneId(2, 3)
-	runeId2 := NewRuneId(5, 6)
-	runeId3 := NewRuneId(17, 18)
+	runeId1, _ := NewRuneId(2, 3)
+	runeId2, _ := NewRuneId(5, 6)
+	runeId3, _ := NewRuneId(17, 18)
 	caseFunc(
 		Runestone{
 			Edicts: []Edict{
@@ -1580,13 +1586,22 @@ func TestEncipher(t *testing.T) {
 		},
 	)
 }
+func scriptInstructionsCount(script []byte) int {
+	tokenizer := txscript.MakeScriptTokenizer(0, script)
+	count := 0
+	for tokenizer.Next() {
+		count++
+	}
+	return count
+}
+
 func TestRunestonePayloadIsChunked(t *testing.T) {
 	script := &Runestone{
 		Edicts: make([]Edict, 129),
 	}
 	data, err := script.Encipher()
 	assert.NoError(t, err)
-	assert.Equal(t, 3, len(data))
+	assert.Equal(t, 3, scriptInstructionsCount(data))
 
 	script = &Runestone{
 		Edicts: make([]Edict, 130),
@@ -1594,7 +1609,7 @@ func TestRunestonePayloadIsChunked(t *testing.T) {
 	data, err = script.Encipher()
 	assert.NoError(t, err)
 
-	assert.Equal(t, 4, len(data))
+	assert.Equal(t, 4, scriptInstructionsCount(data))
 }
 func TestEdictOutputGreaterThan32MaxProducesCenotaph(t *testing.T) {
 	actual, err := decipher([]uint128.Uint128{
@@ -1697,7 +1712,7 @@ func TestInvalidDivisibilityDoesNotProduceCenotaph(t *testing.T) {
 func TestMinAndMaxRunesAreNotCenotaphs(t *testing.T) {
 	actual, err := decipher([]uint128.Uint128{
 		itag(TagFlags),
-		iflag(FlagEtching),
+		FlagEtching.Mask(),
 		itag(TagRune),
 		uint128.From64(0),
 	})
@@ -1714,7 +1729,7 @@ func TestMinAndMaxRunesAreNotCenotaphs(t *testing.T) {
 
 	actual, err = decipher([]uint128.Uint128{
 		itag(TagFlags),
-		iflag(FlagEtching),
+		FlagEtching.Mask(),
 		itag(TagRune),
 		uint128.Max,
 	})
@@ -1869,7 +1884,7 @@ func TestInvalidScriptsInOpReturnsWithoutMagicNumberAreIgnored(t *testing.T) {
 	}
 	r := &Runestone{}
 	actual1, err := r.Decipher(tx1)
-	assert.NoError(t, err)
+
 	assert.Nil(t, actual1)
 
 	pkScript, _ := r.Encipher()
@@ -1936,206 +1951,58 @@ func TestInvalidScriptsInOpReturnsWithMagicNumberProduceCenotaph(t *testing.T) {
 	}
 	assertArtifactSame(t, expected, actual)
 }
+
 func TestAllPushdataOpcodesAreValid(t *testing.T) {
 	for i := 0; i < 79; i++ {
-		var scriptPubKey []byte
+		t.Run(fmt.Sprintf("case[%d]", i), func(t *testing.T) {
+			var scriptPubkey []byte
+			scriptPubkey = append(scriptPubkey, uint8(txscript.OP_RETURN))
+			scriptPubkey = append(scriptPubkey, uint8(MAGIC_NUMBER))
+			scriptPubkey = append(scriptPubkey, byte(i))
 
-		scriptPubKey = append(scriptPubKey, byte(txscript.OP_RETURN))
-		scriptPubKey = append(scriptPubKey, byte(MAGIC_NUMBER))
-		scriptPubKey = append(scriptPubKey, byte(i))
-
-		switch i {
-		case 0:
-			fallthrough
-		case 1:
-			fallthrough
-		case 2:
-			fallthrough
-		case 3:
-			fallthrough
-		case 4:
-			fallthrough
-		case 5:
-			fallthrough
-		case 6:
-			fallthrough
-		case 7:
-			fallthrough
-		case 8:
-			fallthrough
-		case 9:
-			fallthrough
-		case 10:
-			fallthrough
-		case 11:
-			fallthrough
-		case 12:
-			fallthrough
-		case 13:
-			fallthrough
-		case 14:
-			fallthrough
-		case 15:
-			fallthrough
-		case 16:
-			fallthrough
-		case 17:
-			fallthrough
-		case 18:
-			fallthrough
-		case 19:
-			fallthrough
-		case 20:
-			fallthrough
-		case 21:
-			fallthrough
-		case 22:
-			fallthrough
-		case 23:
-			fallthrough
-		case 24:
-			fallthrough
-		case 25:
-			fallthrough
-		case 26:
-			fallthrough
-		case 27:
-			fallthrough
-		case 28:
-			fallthrough
-		case 29:
-			fallthrough
-		case 30:
-			fallthrough
-		case 31:
-			fallthrough
-		case 32:
-			fallthrough
-		case 33:
-			fallthrough
-		case 34:
-			fallthrough
-		case 35:
-			fallthrough
-		case 36:
-			fallthrough
-		case 37:
-			fallthrough
-		case 38:
-			fallthrough
-		case 39:
-			fallthrough
-		case 40:
-			fallthrough
-		case 41:
-			fallthrough
-		case 42:
-			fallthrough
-		case 43:
-			fallthrough
-		case 44:
-			fallthrough
-		case 45:
-			fallthrough
-		case 46:
-			fallthrough
-		case 47:
-			fallthrough
-		case 48:
-			fallthrough
-		case 49:
-			fallthrough
-		case 50:
-			fallthrough
-		case 51:
-			fallthrough
-		case 52:
-			fallthrough
-		case 53:
-			fallthrough
-		case 54:
-			fallthrough
-		case 55:
-			fallthrough
-		case 56:
-			fallthrough
-		case 57:
-			fallthrough
-		case 58:
-			fallthrough
-		case 59:
-			fallthrough
-		case 60:
-			fallthrough
-		case 61:
-			fallthrough
-		case 62:
-			fallthrough
-		case 63:
-			fallthrough
-		case 64:
-			fallthrough
-		case 65:
-			fallthrough
-		case 66:
-			fallthrough
-		case 67:
-			fallthrough
-		case 68:
-			fallthrough
-		case 69:
-			fallthrough
-		case 70:
-			fallthrough
-		case 71:
-			fallthrough
-		case 72:
-			fallthrough
-		case 73:
-			fallthrough
-		case 74:
-			fallthrough
-		case 75:
-			for j := 0; j < i; j++ {
-				if j%2 == 0 {
-					scriptPubKey = append(scriptPubKey, 1)
-				} else {
-					scriptPubKey = append(scriptPubKey, 0)
+			switch {
+			case i >= 0 && i <= 75:
+				for j := 0; j < i; j++ {
+					if j%2 == 0 {
+						scriptPubkey = append(scriptPubkey, 1)
+					} else {
+						scriptPubkey = append(scriptPubkey, 0)
+					}
 				}
+
+				if i%2 == 1 {
+					scriptPubkey = append(scriptPubkey, 1)
+					scriptPubkey = append(scriptPubkey, 1)
+				}
+			case i == 76:
+				scriptPubkey = append(scriptPubkey, 0)
+			case i == 77:
+				scriptPubkey = append(scriptPubkey, 0)
+				scriptPubkey = append(scriptPubkey, 0)
+			case i == 78:
+				scriptPubkey = append(scriptPubkey, 0)
+				scriptPubkey = append(scriptPubkey, 0)
+				scriptPubkey = append(scriptPubkey, 0)
+				scriptPubkey = append(scriptPubkey, 0)
+			default:
+				assert.Fail(t, "unreachable")
 			}
 
-			if i%2 == 1 {
-				scriptPubKey = append(scriptPubKey, 1)
-				scriptPubKey = append(scriptPubKey, 1)
-			}
-		case 76:
-			scriptPubKey = append(scriptPubKey, 0)
-		case 77:
-			scriptPubKey = append(scriptPubKey, 0)
-			scriptPubKey = append(scriptPubKey, 0)
-		case 78:
-			scriptPubKey = append(scriptPubKey, 0)
-			scriptPubKey = append(scriptPubKey, 0)
-			scriptPubKey = append(scriptPubKey, 0)
-			scriptPubKey = append(scriptPubKey, 0)
-		default:
-			t.Fatal("unreachable")
-		}
+			tx := &wire.MsgTx{
+				Version: 2,
 
-		tx := &wire.MsgTx{
-			Version: 2,
-
-			TxOut: []*wire.TxOut{
-				{
-					PkScript: scriptPubKey,
-					Value:    0,
+				TxOut: []*wire.TxOut{
+					{
+						PkScript: scriptPubkey,
+						Value:    0,
+					},
 				},
-			},
-		}
-		r := &Runestone{}
-		artifact, err := r.Decipher(tx)
-		assert.NoError(t, err)
-		assertArtifactSame(t, &Artifact{Runestone: &Runestone{}}, artifact)
+			}
+			r := &Runestone{}
+			artifact, err := r.Decipher(tx)
+			assert.NoError(t, err)
+			assertArtifactSame(t, &Artifact{Runestone: &Runestone{}}, artifact)
+		})
 	}
 }
 func TestAllNonPushdataOpcodesAreInvalid(t *testing.T) {

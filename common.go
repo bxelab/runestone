@@ -65,3 +65,6 @@ func EncodeUint8(n uint8) []byte {
 func EncodeUint128(n uint128.Uint128) []byte {
 	return Encode(n.Big())
 }
+func EncodeChar(r rune) []byte {
+	return EncodeUint32(uint32(r))
+}

@@ -9,14 +9,18 @@ import (
 	"lukechampine.com/uint128"
 )
 
+func newRuneId(block uint64, tx uint32) *RuneId {
+	return &RuneId{Block: block, Tx: tx}
+
+}
 func TestDelta(t *testing.T) {
 	expected := []*RuneId{
-		NewRuneId(3, 1),
-		NewRuneId(4, 2),
-		NewRuneId(1, 2),
-		NewRuneId(1, 1),
-		NewRuneId(3, 1),
-		NewRuneId(2, 0),
+		newRuneId(3, 1),
+		newRuneId(4, 2),
+		newRuneId(1, 2),
+		newRuneId(1, 1),
+		newRuneId(3, 1),
+		newRuneId(2, 0),
 	}
 
 	sort.Slice(expected, func(i, j int) bool {
@@ -27,12 +31,12 @@ func TestDelta(t *testing.T) {
 	})
 
 	assert.Equal(t, []*RuneId{
-		NewRuneId(1, 1),
-		NewRuneId(1, 2),
-		NewRuneId(2, 0),
-		NewRuneId(3, 1),
-		NewRuneId(3, 1),
-		NewRuneId(4, 2),
+		newRuneId(1, 1),
+		newRuneId(1, 2),
+		newRuneId(2, 0),
+		newRuneId(3, 1),
+		newRuneId(3, 1),
+		newRuneId(4, 2),
 	}, expected)
 
 	previous := &RuneId{}
@@ -87,5 +91,5 @@ func TestFromStr(t *testing.T) {
 
 	r, err := RuneIdFromString("1:2")
 	assert.NoError(t, err)
-	assert.Equal(t, NewRuneId(1, 2), r)
+	assert.Equal(t, newRuneId(1, 2), r)
 }

@@ -1,7 +1,6 @@
 package go_runestone
 
 import (
-	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -181,7 +180,7 @@ func TestReserved(t *testing.T) {
 	const A = "AAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	r, err := RuneFromString(A)
 	assert.NoError(err)
-	assert.Equal(r, Rune{RESERVED}, "Rune value should be RESERVED")
+	assertJsonEqual(t, r, Rune{RESERVED})
 
 	assert.Equal(Reserved(0, 0), Rune{RESERVED}, "Rune.Reserved(0, 0) should return RESERVED")
 
@@ -194,7 +193,7 @@ func TestReserved(t *testing.T) {
 	r1 := Reserved(math.MaxUint64, math.MaxUint32)
 	//      Rune(Rune::RESERVED + (u128::from(u64::MAX) << 32 | u128::from(u32::MAX))),
 	r2 := Rune{RESERVED.Add(uint128.From64(math.MaxUint64).Lsh(32).Or(uint128.From64(math.MaxUint32)))}
-	assert.Equal(r1, r2, "Rune.Reserved(u64::MAX, u32::MAX) should return RESERVED + (u128::from(u64::MAX) << 32 | u128::from(u32::MAX))")
+	assertJsonEqual(t, r1, r2)
 }
 func TestIsReserved(t *testing.T) {
 	assert := assert.New(t)
@@ -226,7 +225,7 @@ func TestSteps(t *testing.T) {
 			assert.Equal(len(STEPS), i, "Rune::STEPS length should be equal to i")
 			break
 		} else {
-			assert.Equal(Rune{STEPS[i]}, r, fmt.Sprintf("Rune(STEPS[%d]) should be equal to Rune with %s", i, repeatedA))
+			assertJsonEqual(t, Rune{STEPS[i]}, r)
 		}
 	}
 }

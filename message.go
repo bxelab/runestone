@@ -50,7 +50,7 @@ func MessageFromIntegers(tx *wire.MsgTx, payload []uint128.Uint128) (*Message, e
 			value := payload[i+1]
 			fields[tag] = append(fields[tag], value)
 		} else {
-			*flaw = NewFlaw("TruncatedField")
+			flaw = FlawP(TruncatedField)
 			break
 		}
 	}

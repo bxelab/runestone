@@ -1,9 +1,10 @@
 package go_runestone
 
 import (
-	"encoding/binary"
 	"errors"
+	"math/big"
 	"sort"
+	"unicode/utf8"
 
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
@@ -92,7 +93,11 @@ func (r *Runestone) Decipher(transaction *wire.MsgTx) (*Artifact, error) {
 		//      }),
 		etching.Symbol, err = TagTake(TagSymbol, message.Fields,
 			func(uint128s []uint128.Uint128) (*rune, error) {
+
 				symbol := rune(uint32(uint128s[0].Lo))
+				if symbol > utf8.MaxRune {
+					return nil, errors.New("symbol too high")
+				}
 				return &symbol, nil
 			}, 1)
 		//      terms: Flag::Terms.take(&mut flags).then(|| Terms {
@@ -155,8 +160,7 @@ func (r *Runestone) Decipher(transaction *wire.MsgTx) (*Artifact, error) {
 		func(uint128s []uint128.Uint128) (*RuneId, error) {
 			block := uint64(uint128s[0].Lo)
 			tx := uint32(uint128s[1].Lo)
-			return &RuneId{block, tx}, nil
-
+			return NewRuneId(block, tx)
 		}, 2)
 	//let pointer = Tag::Pointer.take(&mut fields, |[pointer]| {
 	//      let pointer = u32::try_from(pointer).ok()?;
@@ -238,6 +242,9 @@ func (r *Runestone) Encipher() ([]byte, error) {
 		if r.Etching.Terms != nil {
 			FlagTerms.Set(&flags)
 		}
+		if r.Etching.Turbo {
+			FlagTurbo.Set(&flags)
+		}
 		payload = append(payload, TagFlags.Byte())
 		payload = append(payload, EncodeUint128(flags)...)
 		if r.Etching.Rune != nil {
@@ -254,7 +261,7 @@ func (r *Runestone) Encipher() ([]byte, error) {
 		}
 		if r.Etching.Symbol != nil {
 			payload = append(payload, TagSymbol.Byte())
-			payload = append(payload, runeToBytes(r.Etching.Symbol)...)
+			payload = append(payload, EncodeChar(*r.Etching.Symbol)...)
 		}
 		if r.Etching.Premine != nil {
 			payload = append(payload, TagPremine.Byte())
@@ -296,7 +303,7 @@ func (r *Runestone) Encipher() ([]byte, error) {
 		payload = append(payload, EncodeUint32(*r.Pointer)...)
 	}
 	//Edicts
-	if r.Edicts != nil {
+	if len(r.Edicts) != 0 {
 		payload = append(payload, TagBody.Byte())
 		edicts := r.Edicts
 		sort.Slice(edicts, func(i, j int) bool {
@@ -326,7 +333,7 @@ func (r *Runestone) Encipher() ([]byte, error) {
 	// Push OP_RETURN
 	builder.AddOp(txscript.OP_RETURN)
 	// Push MAGIC_NUMBER
-	builder.AddInt64(int64(MAGIC_NUMBER))
+	builder.AddOp(MAGIC_NUMBER)
 	for len(payload) > 0 {
 		chunkSize := txscript.MaxScriptElementSize
 		if len(payload) < chunkSize {
@@ -347,27 +354,20 @@ type Payload struct {
 func (r *Runestone) payload(transaction *wire.MsgTx) (*Payload, error) {
 	for _, output := range transaction.TxOut {
 		tokenizer := txscript.MakeScriptTokenizer(0, output.PkScript)
-		if tokenizer.Next() && tokenizer.Err() != nil {
+		if !tokenizer.Next() || tokenizer.Err() != nil || tokenizer.Opcode() != txscript.OP_RETURN {
 			// Check for OP_RETURN
-			if tokenizer.Opcode() != txscript.OP_RETURN {
-				continue
-			}
+			continue
 		}
-		if tokenizer.Next() && tokenizer.Err() != nil {
+		if !tokenizer.Next() || tokenizer.Err() != nil || tokenizer.Opcode() != MAGIC_NUMBER {
 			// Check for protocol identifier (Runestone::MAGIC_NUMBER)
-			if tokenizer.Opcode() != MAGIC_NUMBER {
-				continue
-			}
+			continue
 		}
 
 		// Construct the payload by concatenating remaining data pushes
 		var payload []byte
 		for tokenizer.Next() {
-			if tokenizer.Err() != nil {
-				return &Payload{Invalid: InvalidScript}, InvalidScript.Error()
-			}
 			//is PushBytes
-			if tokenizer.Opcode() >= txscript.OP_DATA_1 && tokenizer.Opcode() <= txscript.OP_PUSHDATA4 {
+			if isPushBytes(tokenizer.Opcode()) {
 				payload = append(payload, tokenizer.Data()...)
 				continue
 			} else {
@@ -375,29 +375,52 @@ func (r *Runestone) payload(transaction *wire.MsgTx) (*Payload, error) {
 			}
 
 		}
+		//Err(_) => {
+		//            return Some(Payload::Invalid(Flaw::InvalidScript));
+		//          }
+		if tokenizer.Err() != nil {
+			return &Payload{Invalid: InvalidScript}, InvalidScript.Error()
+		}
 
 		return &Payload{Valid: payload}, nil
 	}
 
 	return nil, errors.New("no OP_RETURN output found")
 }
+func isPushBytes(opCode byte) bool {
+	return opCode >= txscript.OP_0 && opCode <= txscript.OP_PUSHDATA4
+}
 
 func (r *Runestone) integers(payload []byte) ([]uint128.Uint128, error) {
-	var integers []uint128.Uint128
+	integers := make([]uint128.Uint128, 0)
 	i := 0
 
 	for i < len(payload) {
-		integer, length := binary.Uvarint(payload[i:])
-		if length <= 0 {
-			return nil, errors.New("invalid varint data")
+		integer, length, err := uvarint128(payload[i:])
+		if err != nil {
+			return nil, err
 		}
-		integers = append(integers, uint128.From64(integer))
+		integers = append(integers, integer)
 		i += length
 	}
 
 	return integers, nil
 }
-
-func runeToBytes(r *rune) []byte {
-	return []byte(string(*r))
+func uvarint128(buf []byte) (uint128.Uint128, int, error) {
+	n := big.NewInt(0)
+	for i, tick := range buf {
+		if i > 18 {
+			return uint128.Zero, 0, errors.New("varint too long")
+		}
+		value := uint64(tick) & 0b0111_1111
+		if i == 18 && value&0b0111_1100 != 0 {
+			return uint128.Zero, 0, errors.New("varint too large")
+		}
+		temp := new(big.Int).SetUint64(value)
+		n.Or(n, temp.Lsh(temp, uint(7*i)))
+		if tick&0b1000_0000 == 0 {
+			return uint128.FromBig(n), i + 1, nil
+		}
+	}
+	return uint128.Zero, 0, errors.New("varint too short")
 }
