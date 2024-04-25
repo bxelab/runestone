@@ -16,9 +16,12 @@ check-license:
 		else \
 			echo "Check License finished successfully"; \
 		fi
+
+build:
+	cd ./cmd/runestonecli && go build -o ../../bin/runestonecli .
+
 ut:
 	go test -v ./...
-
 
 lint:
 	golangci-lint run ./...
