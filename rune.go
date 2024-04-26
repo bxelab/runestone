@@ -198,3 +198,8 @@ func (e Error) Error() string {
 	}
 	return fmt.Sprintf("invalid character `%c`", e.Character)
 }
+
+// MarshalJSON json marshal
+func (r Rune) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + r.String() + `"`), nil
+}
