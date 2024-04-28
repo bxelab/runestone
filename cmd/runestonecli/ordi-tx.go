@@ -24,7 +24,7 @@ const (
 	MaxStandardTxWeight = blockchain.MaxBlockWeight / 10
 )
 
-func BuildInscriptionTxs(privateKey *btcec.PrivateKey, utxo []*Utxo, mime string, content []byte, feeRate int64, revealValue int64, net *chaincfg.Params) ([]byte, []byte, error) {
+func BuildInscriptionTxs(privateKey *btcec.PrivateKey, utxo []*Utxo, mime string, content []byte, feeRate int64, revealValue int64, net *chaincfg.Params, inscriptionAddData []byte, opReturnData []byte) ([]byte, []byte, error) {
 	//build 2 tx, 1 transfer BTC to taproot address, 2 inscription transfer taproot address to another address
 	pubKey := privateKey.PubKey()
 	receiver, err := getP2TRAddress(pubKey, net)
@@ -32,7 +32,7 @@ func BuildInscriptionTxs(privateKey *btcec.PrivateKey, utxo []*Utxo, mime string
 		return nil, nil, err
 	}
 	// 1. build inscription script
-	inscriptionScript, err := CreateInscriptionScript(pubKey, mime, content)
+	inscriptionScript, err := CreateInscriptionScript(pubKey, mime, content, inscriptionAddData)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -42,7 +42,7 @@ func BuildInscriptionTxs(privateKey *btcec.PrivateKey, utxo []*Utxo, mime string
 	}
 	inscriptionPkScript, _ := txscript.PayToAddrScript(inscriptionAddress)
 	// 2. build reveal tx
-	revealTx, totalPrevOutput, err := buildEmptyRevealTx(receiver, inscriptionScript, revealValue, feeRate, nil)
+	revealTx, totalPrevOutput, err := buildEmptyRevealTx(receiver, inscriptionScript, revealValue, feeRate, opReturnData)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -60,7 +60,7 @@ func getDefaultLanguage() language.Tag {
 	langTag := strings.Split(langEnv, ".")[0]
 	tag, err := language.Parse(langTag)
 	if err != nil {
-		return language.Chinese
+		return language.English
 	}
 	return tag
 }

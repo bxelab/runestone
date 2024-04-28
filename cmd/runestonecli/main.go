@@ -86,8 +86,13 @@ func BuildEtchingTxs() {
 	btcConnector := NewMempoolConnector(config)
 	prvKey, address, _ := config.GetPrivateKeyAddr()
 	utxos, err := btcConnector.GetUtxos(address)
-
-	cTx, rTx, err := BuildRuneEtchingTxs(prvKey, utxos, data, commitment, config.GetFeePerByte(), config.GetUtxoAmount(), config.GetNetwork(), address)
+	var cTx, rTx []byte
+	mime, logoData := config.GetRuneLogo()
+	if len(mime) == 0 {
+		cTx, rTx, err = BuildRuneEtchingTxs(prvKey, utxos, data, commitment, config.GetFeePerByte(), config.GetUtxoAmount(), config.GetNetwork(), address)
+	} else {
+		cTx, rTx, err = BuildInscriptionTxs(prvKey, utxos, mime, logoData, config.GetFeePerByte(), config.GetUtxoAmount(), config.GetNetwork(), commitment, data)
+	}
 	if err != nil {
 		p.Println("BuildRuneEtchingTxs error:", err.Error())
 		return

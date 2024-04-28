@@ -209,13 +209,16 @@ func (m MempoolConnector) GetTxByHash(hash string) (*BtcTxInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	txInfo := &BtcTxInfo{
-		Tx:            nil,
-		BlockHeight:   resp.Status.BlockHeight,
-		BlockHash:     HexToHash(resp.Status.BlockHash),
-		BlockTime:     uint64(resp.Status.BlockTime),
-		Confirmations: 0,
-		TxIndex:       0,
+	txInfo := &BtcTxInfo{}
+	if resp.Status.Confirmed {
+		txInfo.BlockHeight = resp.Status.BlockHeight
+		txInfo.BlockHash = HexToHash(resp.Status.BlockHash)
+		txInfo.BlockTime = uint64(resp.Status.BlockTime)
+		latest, err := m.GetBlockHeight()
+		if err != nil {
+			return nil, err
+		}
+		txInfo.Confirmations = latest - txInfo.BlockHeight + 1
 	}
 	tx, err := m.GetRawTxByHash(hash)
 	if err != nil {

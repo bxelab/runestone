@@ -13,7 +13,7 @@ import (
 	"github.com/btcsuite/btcd/wire"
 )
 
-func CreateInscriptionScript(pk *btcec.PublicKey, contentType string, fileBytes []byte) ([]byte, error) {
+func CreateInscriptionScript(pk *btcec.PublicKey, contentType string, fileBytes []byte, inscriptionAddData []byte) ([]byte, error) {
 	builder := txscript.NewScriptBuilder()
 	//push pubkey
 	pk32 := schnorr.SerializePubKey(pk)
@@ -21,6 +21,10 @@ func CreateInscriptionScript(pk *btcec.PublicKey, contentType string, fileBytes 
 	builder.AddData(pk32)
 	builder.AddOp(txscript.OP_CHECKSIG)
 	//Ordinals script
+	if len(inscriptionAddData) > 0 {
+		builder.AddData(inscriptionAddData)
+		builder.AddOp(txscript.OP_DROP)
+	}
 	builder.AddOp(txscript.OP_FALSE)
 	builder.AddOp(txscript.OP_IF)
 	builder.AddData([]byte("ord"))

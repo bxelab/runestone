@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/hex"
 	"errors"
+	"net/http"
+	"os"
 	"unicode/utf8"
 
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -22,6 +24,7 @@ type Config struct {
 	RpcUrl     string
 	Etching    *struct {
 		Rune              string
+		Logo              string
 		Symbol            *string
 		Premine           *uint64
 		Amount            *uint64
@@ -81,7 +84,7 @@ func (c Config) GetEtching() (*runestone.Etching, error) {
 	etching.Spacers = &r.Spacers
 	if c.Etching.Symbol != nil {
 		symbolStr := *c.Etching.Symbol
-		symbol := rune(symbolStr[0])
+		symbol := ([]rune(symbolStr))[0]
 		etching.Symbol = &symbol
 	}
 	if c.Etching.Premine != nil {
@@ -183,4 +186,43 @@ func (c Config) GetPrivateKeyAddr() (*btcec.PrivateKey, string, error) {
 	}
 	address := addr.EncodeAddress()
 	return privKey, address, nil
+}
+func (c Config) GetRuneLogo() (mime string, data []byte) {
+	if c.Etching != nil && c.Etching.Logo != "" {
+		mime, err := getContentType(c.Etching.Logo)
+		if err != nil {
+			return "", nil
+		}
+		data, err := getFileBytes(c.Etching.Logo)
+		if err != nil {
+			return "", nil
+		}
+		return mime, data
+
+	}
+	return "", nil
+}
+
+func getContentType(filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	buffer := make([]byte, 512)
+	_, err = file.Read(buffer)
+	if err != nil {
+		return "", err
+	}
+
+	contentType := http.DetectContentType(buffer)
+	return contentType, nil
+}
+func getFileBytes(filePath string) ([]byte, error) {
+	fileBytes, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	return fileBytes, nil
 }
