@@ -167,6 +167,9 @@ func (c Config) GetNetwork() *chaincfg.Params {
 
 func (c Config) GetPrivateKeyAddr() (*btcec.PrivateKey, string, error) {
 	if c.PrivateKey == "" {
+		c.PrivateKey = os.Getenv("RUNESTONE_PRIVATE_KEY")
+	}
+	if c.PrivateKey == "" {
 		return nil, "", errors.New("PrivateKey is required")
 	}
 	pkBytes, err := hex.DecodeString(c.PrivateKey)

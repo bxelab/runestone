@@ -139,7 +139,7 @@ func BuildTransferBTCTx(privateKey *btcec.PrivateKey, utxo []*Utxo, toAddr strin
 		return nil, err
 	}
 	// 1. build tx
-	transferTx, err := buildCommitTx(utxo, wire.NewTxOut(toAmount, pkScript), feeRate, runeData, true)
+	transferTx, err := buildCommitTx(utxo, wire.NewTxOut(toAmount, pkScript), feeRate, runeData, config.UtxoAmount != 0)
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +222,7 @@ func buildEmptyRevealTx(receiver btcutil.Address, inscriptionScript []byte, reve
 }
 func findBestUtxo(commitTxOutPointList []*Utxo, totalRevealPrevOutput, commitFeeRate int64) []*Utxo {
 	sort.Slice(commitTxOutPointList, func(i, j int) bool {
-		return commitTxOutPointList[i].Value > commitTxOutPointList[j].Value
+		return commitTxOutPointList[i].Value < commitTxOutPointList[j].Value
 	})
 	best := make([]*Utxo, 0)
 	total := int64(0)
@@ -230,7 +230,11 @@ func findBestUtxo(commitTxOutPointList []*Utxo, totalRevealPrevOutput, commitFee
 		if total >= totalRevealPrevOutput+commitFeeRate {
 			break
 		}
+		if utxo.Value <= 1000 {
+			continue
+		}
 		best = append(best, utxo)
+		fmt.Printf("use UTXO: %s, value: %d, pkScript:%x\n", utxo.OutPoint().String(), utxo.Value, utxo.PkScript)
 		total += utxo.Value
 	}
 	return best
@@ -269,7 +273,7 @@ func buildCommitTx(commitTxOutPointList []*Utxo, revealTxPrevOutput *wire.TxOut,
 	for _, in := range tx.TxIn {
 		in.Witness = wire.TxWitness{emptySignature}
 	}
-	fee := btcutil.Amount(mempool.GetTxVirtualSize(btcutil.NewTx(tx))) * btcutil.Amount(commitFeeRate)
+	fee := btcutil.Amount(mempool.GetTxVirtualSize(btcutil.NewTx(tx)))*btcutil.Amount(commitFeeRate) + 1
 	changeAmount := totalSenderAmount - btcutil.Amount(totalRevealPrevOutput) - fee
 	if changeAmount > 0 {
 		tx.TxOut[len(tx.TxOut)-1].Value += int64(changeAmount)

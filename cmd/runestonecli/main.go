@@ -24,7 +24,7 @@ func main() {
 	checkAndPrintConfig()
 
 	// 显示多语言文本
-	items := []string{i18n("Etching a new rune"), i18n("Mint rune")}
+	items := []string{i18n("Etching a new rune"), i18n("Mint rune"), i18n("Count Rune mint")}
 	prompt := promptui.Select{
 		Label: i18n("Please select an option"),
 		Items: items,
@@ -41,7 +41,9 @@ func main() {
 	}
 	if optionIdx == 1 { //Mint rune
 		BuildMintTxs()
-
+	}
+	if optionIdx == 2 {
+		CountMintRunes()
 	}
 }
 
